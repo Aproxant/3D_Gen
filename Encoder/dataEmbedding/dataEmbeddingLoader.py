@@ -1,15 +1,14 @@
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-nltk.download("stopwords")
-nltk.download('wordnet')
+
 from torch.utils.data import Dataset
 import torch
 import nrrd
 import os
 from itertools import groupby
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class GenerateDataLoader(Dataset):
     def __init__(self, input_data,dataset_name,path,labelEnc,dict_word2idx,mode):

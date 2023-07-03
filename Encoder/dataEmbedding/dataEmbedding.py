@@ -5,8 +5,7 @@ from itertools import combinations
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-nltk.download("stopwords")
-nltk.download('wordnet')
+
 
 
 class Read_Load_BuildBatch():

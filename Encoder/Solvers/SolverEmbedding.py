@@ -4,21 +4,21 @@ from torch.nn.utils import clip_grad_value_
 from tqdm import tqdm
 import torch
 import numpy as np
-from torch.utils.data import DataLoader, Dataset
+from config import cfg
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class Solver():
-    def __init__(self, text_encoder,shape_encoder,dataloader, optimizer, criterion, batch_size):
+    def __init__(self, text_encoder,shape_encoder,dataloader, optimizer, criterion, batch_size,device):
         self.dataloader = dataloader
         self.text_encoder=text_encoder
         self.shape_encoder=shape_encoder
         self.optimizer = optimizer
         self.batch_size = batch_size
         self.criterion = criterion
-
+        self.device=device
     def train(self, epoch):
-        scheduler = StepLR(self.optimizer, step_size=5, gamma=0.1)
+        scheduler = StepLR(self.optimizer, step_size=cfg.EMBEDDING_SCHEDULER_STEP, gamma=cfg.EMBEDDING_SCHEDULER_GAMMA)
         
         for epoch_id in range(epoch):
             train_log = {
@@ -52,7 +52,6 @@ class Solver():
             for (_,_,labels,texts , _, shapes) in tqdm(self.dataloader['train']):
 
                 losses = self.forward(shapes, texts, labels)
-
                 train_log['total_loss'].append(losses['total_loss'].item())
                 train_log['walker_loss_tst'].append(losses['walker_loss_tst'].item())
                 train_log['walker_loss_sts'].append(losses['walker_loss_sts'].item())
@@ -63,14 +62,12 @@ class Solver():
                 train_log['shape_norm_penalty'].append(losses['shape_norm_penalty'].item())
                 train_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
 
-                #print(losses['total_loss'].item())
-
                 # back prop
                 self.optimizer.zero_grad()
 
                 losses['total_loss'].backward()
 
-                clip_grad_value_(list(self.shape_encoder.parameters()) + list(self.text_encoder.parameters()), 5.)
+                clip_grad_value_(list(self.shape_encoder.parameters()) + list(self.text_encoder.parameters()), cfg.GRADIENT_CLIPPING)
 
                 self.optimizer.step()
 
@@ -97,13 +94,13 @@ class Solver():
         scheduler.step()
 
     def forward(self, shapes, texts, labels):
-        # load
-        batch_size = shapes.size(0)
-        texts = texts.to(device)
-        text_labels = labels.to(device)
 
-        shapes = shapes.to(device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(device))
-        shape_labels = labels.to(device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(device))
+        batch_size = shapes.size(0)
+        texts = texts.to(self.device)
+        text_labels = labels.to(self.device)
+
+        shapes = shapes.to(self.device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
+        shape_labels = labels.to(self.device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
         
 
         s = self.shape_encoder(shapes)
@@ -116,13 +113,13 @@ class Solver():
     def compute_loss(self,s, t, s_labels, t_labels):
 
         batch_size = t.size(0)
-        
+
         equality_matrix = t_labels.reshape(-1,1).eq(t_labels).float()
         p_target = (equality_matrix / equality_matrix.sum(1))
 
-      
         walker_loss_tst = self.criterion['walker'](t, s, p_target)
         visit_loss_ts = self.criterion['visit'](t, s)
+
 
         equality_matrix_s = s_labels.reshape(-1,1).eq(s_labels).float()
         p_target_s = (equality_matrix_s / equality_matrix_s.sum(1))
@@ -133,19 +130,18 @@ class Solver():
 
         metric_loss_tt = self.criterion['metric'](t)
 
-            
-        s_mask = torch.BoolTensor([[1], [0]]).repeat(batch_size // 2, 128).to(device)
-        t_mask = torch.BoolTensor([[0], [1]]).repeat(batch_size // 2, 128).to(device)
+        s_mask = torch.BoolTensor([[1], [0]]).repeat(batch_size // 2, cfg.EMBEDDING_DIM).to(self.device)
+        t_mask = torch.BoolTensor([[0], [1]]).repeat(batch_size // 2, cfg.EMBEDDING_DIM).to(self.device)
         selected_s = s
-        selected_t = t.index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(device))
-        masked_s = torch.zeros(batch_size, 128).to(device).masked_scatter_(s_mask, selected_s)
-        masked_t = torch.zeros(batch_size, 128).to(device).masked_scatter_(t_mask, selected_t)
+        selected_t = t.index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
+        masked_s = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(s_mask, selected_s)
+        masked_t = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(t_mask, selected_t)
         embedding = masked_s + masked_t
 
         metric_loss_st = self.criterion['metric'](embedding)
                     
-        flipped_t = t.index_select(0, torch.LongTensor([i * 2 + 1 for i in range(batch_size // 2)]).to(device))
-        flipped_masked_t = torch.zeros(batch_size, 128).to(device).masked_scatter_(t_mask, flipped_t)
+        flipped_t = t.index_select(0, torch.LongTensor([i * 2 + 1 for i in range(batch_size // 2)]).to(self.device))
+        flipped_masked_t = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(t_mask, flipped_t)
         embedding = masked_s + flipped_masked_t
         metric_loss_st += self.criterion['metric'](embedding)
 
@@ -155,28 +151,27 @@ class Solver():
         text_norm_penalty = self._norm_penalty(t)
 
 
-        #loss=walker_loss_tst
-        loss = walker_loss_tst + walker_loss_sts + visit_loss_ts + visit_loss_st
-        loss +=  metric_loss_st + metric_loss_tt #TU ZMIENIC MNOZNIK
-        loss += (2 * shape_norm_penalty + 2 * text_norm_penalty)#TU ZMIENIC MNOZNIK
+        loss = cfg.WALKER_WEIGHT*(walker_loss_tst + walker_loss_sts) + cfg.VISIT_WEIGHT*(visit_loss_ts + visit_loss_st)
+        loss +=  cfg.METRIC_WEIGHT*(metric_loss_st + metric_loss_tt)
+        loss += (cfg.SHAPE_NORM_MULTIPLIER* shape_norm_penalty + cfg.TEXT_NORM_MULTIPLIER * text_norm_penalty)
 
         losses = {
             'total_loss': loss,
-            'walker_loss_tst': walker_loss_tst,
-            'walker_loss_sts': walker_loss_sts,
-            'visit_loss_ts': visit_loss_ts,
-            'visit_loss_st': visit_loss_st,
-            'metric_loss_st': metric_loss_st,
-            'metric_loss_tt': metric_loss_tt,
-            'shape_norm_penalty': shape_norm_penalty,
-            'text_norm_penalty': text_norm_penalty
+            'walker_loss_tst': walker_loss_tst*cfg.WALKER_WEIGHT,
+            'walker_loss_sts': walker_loss_sts*cfg.WALKER_WEIGHT,
+            'visit_loss_ts': visit_loss_ts*cfg.VISIT_WEIGHT,
+            'visit_loss_st': visit_loss_st*cfg.VISIT_WEIGHT,
+            'metric_loss_st': metric_loss_st*cfg.METRIC_WEIGHT,
+            'metric_loss_tt': metric_loss_tt*cfg.METRIC_WEIGHT,
+            'shape_norm_penalty': shape_norm_penalty*cfg.SHAPE_NORM_MULTIPLIER,
+            'text_norm_penalty': text_norm_penalty*cfg.TEXT_NORM_MULTIPLIER
             }
 
         return losses
 
     def _norm_penalty(self,embedding):
         norm = torch.norm(embedding, p=2, dim=1)
-        penalty = torch.max(torch.zeros(norm.size()).to(device), norm - 10).mean()
+        penalty = torch.max(torch.zeros(norm.size()).to(self.device), norm - cfg.MAX_NORM).mean()
 
         return penalty
 
@@ -201,8 +196,7 @@ class Solver():
             val_log['shape_norm_penalty'].append(losses['shape_norm_penalty'].item())
             val_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
 
-            #print(losses)
-            #print(val_log)
+
 
         return val_log
     """
@@ -222,8 +216,8 @@ class Solver():
         data = {}
         for (model_id,_,labels,texts , _, shapes) in tqdm(self.dataloader[phase]):
 
-            shapes = shapes.to(device)
-            texts = texts.to(device)
+            shapes = shapes.to(self.device)
+            texts = texts.to(self.device)
 
             shape_embedding = self.shape_encoder(shapes)
             text_embedding = self.text_encoder(texts)
@@ -243,7 +237,7 @@ class Solver():
 
         for (model_id,labels,_,texts , _, shapes) in tqdm(self.dataloader[phase]):
 
-            texts = texts.to(device)
+            texts = texts.to(self.device)
 
             text_embedding = self.text_encoder(texts)
 
