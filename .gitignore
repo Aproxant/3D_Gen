@@ -12,3 +12,6 @@
 *.vsix
 
 nrrd_256_filter_div_32_solid/
+
+shapenet/
+test.ipynb

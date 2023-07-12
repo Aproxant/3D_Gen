@@ -8,7 +8,7 @@ import nrrd
 import os
 from itertools import groupby
 
-
+from config import cfg
 
 class GenerateDataLoader(Dataset):
     def __init__(self, input_data,dataset_name,path,labelEnc,dict_word2idx,mode):
@@ -76,15 +76,12 @@ def check_dataset(dataset, batch_size):
     return flag
 
 def collate_embedding(data):
-    #tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
     model_ids, labels,encodedLabel, captions, lengths, voxels = zip(*data)
-    voxels = torch.stack(voxels, 0)
-
-  
+    voxels = torch.stack(voxels, 0)  
     curr_len=max(lengths)
 
-    if 10<max(lengths):
-        max_len=10
+    if cfg.EMBEDDING_CAPTION_LEN<max(lengths):
+        max_len=cfg.EMBEDDING_CAPTION_LEN
     else:
         max_len=curr_len
     
@@ -96,7 +93,7 @@ def collate_embedding(data):
         end = int(lengths[i])
         if end>max_len:
             cap,end=take_most_important_words(cap,max_len)
-            #end=max_len
+            
         merge_caps[i, :end] = torch.LongTensor(cap[:end])
     
     return model_ids,  labels,torch.Tensor(encodedLabel), merge_caps, torch.Tensor(list(lengths)),voxels
@@ -106,20 +103,27 @@ def take_most_important_words(cap,length):
     for i,elem in enumerate(cap):
         max_w.append((elem,i))
     
-    max_w=[i for i in max_w if i[0]!='1']
-
-    max_w=[next(g) for _, g in groupby(max_w, key=lambda x:x[0])]
-
-    max_w.sort(key=lambda tup: tup[0], reverse=False) 
     
+    max_w=[i for i in max_w if i[0]!='1']
+    """
+    max_w=[next(g) for _, g in groupby(max_w, key=lambda x:x[0])] #to nie dizała
+    print(max_w)
+    #max_w.sort(key=lambda tup: tup[0], reverse=False) 
+    print(max_w)
+    """
 
     if len(max_w)>length:
+        #max_w=max_w[:length]
+        max_w.sort(key=lambda tup: tup[0], reverse=False) 
+
         max_w=max_w[:length]
+
         max_w.sort(key=lambda tup: tup[1], reverse=False) 
-        max_w=[i[0] for i in max_w]
-        return max_w,length
+
+        return [i[0] for i in max_w],length
     
     max_w.sort(key=lambda tup: tup[1], reverse=False)
+
 
     return [i[0] for i in max_w], len(max_w)
 

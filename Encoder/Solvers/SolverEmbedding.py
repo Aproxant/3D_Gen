@@ -5,6 +5,7 @@ from tqdm import tqdm
 import torch
 import numpy as np
 from config import cfg
+from tqdm.notebook import tqdm as tqdm_nb
 
 
 
@@ -19,8 +20,11 @@ class Solver():
         self.device=device
     def train(self, epoch):
         scheduler = StepLR(self.optimizer, step_size=cfg.EMBEDDING_SCHEDULER_STEP, gamma=cfg.EMBEDDING_SCHEDULER_GAMMA)
-        
+        pbar = tqdm_nb()
+        piter = 0
         for epoch_id in range(epoch):
+            pbar.reset(total=len(self.dataloader['train']))
+
             train_log = {
                 'total_loss': [],
                 'walker_loss_tst': [],
@@ -43,13 +47,16 @@ class Solver():
                 'shape_norm_penalty': [],
                 'text_norm_penalty': []
                 }
-            print("epoch [{}/{}] starting...\n".format(epoch_id+1, epoch))
+            #print("epoch [{}/{}] starting...\n".format(epoch_id+1, epoch))
             
             self.shape_encoder.train()
 
             self.text_encoder.train()
-            iter=0
-            for (_,_,labels,texts , _, shapes) in tqdm(self.dataloader['train']):
+            iter=1
+            piter=0
+            for (_,_,labels,texts , _, shapes) in self.dataloader['train']:
+                pbar.update()
+                piter += 1
 
                 losses = self.forward(shapes, texts, labels)
                 train_log['total_loss'].append(losses['total_loss'].item())
@@ -70,11 +77,15 @@ class Solver():
                 clip_grad_value_(list(self.shape_encoder.parameters()) + list(self.text_encoder.parameters()), cfg.GRADIENT_CLIPPING)
 
                 self.optimizer.step()
-
+                """
                 if iter % 100==0:
-                    print(losses['total_loss'].item())
-
+                    print(sum(train_log['total_loss'][-iter:])/iter)
+                """
                 iter+=1
+
+                desc = '[%d/%d][%d/%d] Total Loss: %.4f' \
+                    % (epoch_id+1, epoch, piter, len(self.dataloader['train']), losses['total_loss'].item())
+                pbar.set_description(desc)
 
 
         
@@ -84,14 +95,18 @@ class Solver():
             
             self._epoch_report(train_log, val_log, epoch_id, epoch)
 
-        """
-        # evaluate
-        metrics_t2s, metrics_s2t = self.evaluate(shape_encoder, text_encoder, dataloader)
-        total_score_t2s = metrics_t2s.recall_rate[0] + metrics_t2s.recall_rate[4] + metrics_t2s.ndcg[4]
-        total_score_s2t = metrics_s2t.recall_rate[0] + metrics_s2t.recall_rate[4] + metrics_s2t.ndcg[4]
-        total_score = total_score_t2s + total_score_s2t
-        """
-        scheduler.step()
+            """
+            # evaluate
+            metrics_t2s, metrics_s2t = self.evaluate(shape_encoder, text_encoder, dataloader)
+            total_score_t2s = metrics_t2s.recall_rate[0] + metrics_t2s.recall_rate[4] + metrics_t2s.ndcg[4]
+            total_score_s2t = metrics_s2t.recall_rate[0] + metrics_s2t.recall_rate[4] + metrics_s2t.ndcg[4]
+            total_score = total_score_t2s + total_score_s2t
+            """
+
+            scheduler.step()
+        
+        
+        pbar.refresh()
 
     def forward(self, shapes, texts, labels):
 
@@ -102,7 +117,6 @@ class Solver():
         shapes = shapes.to(self.device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
         shape_labels = labels.to(self.device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
         
-
         s = self.shape_encoder(shapes)
         t = self.text_encoder(texts)
 
