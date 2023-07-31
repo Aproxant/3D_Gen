@@ -24,7 +24,7 @@ class RoundTripLoss(nn.Module):
 
               
         return nn.CrossEntropyLoss()(cfg.EPS+p_TST, targets) 
-
+    
 
 class AssociationLoss(nn.Module):
     def __init__(self ,device='cpu'):
@@ -45,37 +45,54 @@ class AssociationLoss(nn.Module):
 
         return nn.CrossEntropyLoss()(cfg.EPS + visit_probability,targets) 
 
+class InstanceMetricLoss(nn.Module):
+    def __init__(self, margin=1.):
+        super(InstanceMetricLoss, self).__init__()
+        self.margin = margin
+    
+    def _get_distance(self, inputs):
 
-class SmoothedMetricLoss(nn.Module):
-    def __init__(self,device='cpu'):
-        super(SmoothedMetricLoss, self).__init__()
-        self.device=device
+        D = inputs.matmul(inputs.transpose(1, 0))
 
-    def forward(self, X):
+        D /= 128.
 
-        batch_size = X.size(0)
+        Dexpm = torch.exp(self.margin + D)
 
-        Xe=X.unsqueeze(1)
 
-        D=torch.mul(Xe.expand(Xe.shape[0],Xe.shape[0],Xe.shape[2]),Xe.permute(1,0,2).expand(Xe.shape[0],Xe.shape[0],Xe.shape[2]))
-        D=D.sum(2,keepdim=False).div(cfg.EMBEDDING_DIM)
+        return D, Dexpm
+        
 
-        expmD=torch.exp(D+cfg.METRIC_MARGIN)
+    def forward(self, inputs):
 
-        J_all=[]
+        batch_size = inputs.size(0)
+        
+        # get distance
+        D, Dexpm = self._get_distance(inputs)
+
+        # compute pair-wise loss
+        global_comp = [0.] * (batch_size // 2)
         for pos_id in range(batch_size // 2):
             pos_i = pos_id * 2
-            pos_j = pos_i+ 1
+            pos_j = pos_i + 1
+            pos_pair = (pos_i, pos_j)
 
-            ind_rest = np.hstack([np.arange(0, pos_id * 2),
-                                  np.arange(pos_id * 2 + 2, batch_size)])
-            
-            inds = [[pos_i, k] for k in ind_rest]
-            inds.extend([[pos_j, l] for l in ind_rest])
-            J_ij = torch.log(cfg.EPS+expmD[tuple(zip(*inds))].sum()) - D[pos_i, pos_j]
-            J_all.append(J_ij)
+            neg_i = [pos_i * batch_size + k * 2 + 1 for k in range(batch_size // 2) if k != pos_j]
+            neg_j = [pos_j * batch_size + l * 2 for l in range(batch_size // 2) if l != pos_i]
 
-        J_all = torch.tensor(J_all)
+            neg_ik = Dexpm.take(torch.LongTensor(neg_i)).sum()
+            neg_jl = Dexpm.take(torch.LongTensor(neg_j)).sum()
+            Dissim = neg_ik + neg_jl
 
-        loss = torch.max(J_all, torch.zeros(J_all.size()).to(self.device)).pow(2).mean().div(2.0)            
-        return loss
+
+            J_ij = torch.log(1e-8 + Dissim) - D[pos_pair]
+
+
+            max_ij = torch.max(J_ij, torch.zeros(J_ij.size())).pow(2)            
+            global_comp[pos_id] = max_ij.unsqueeze(0)
+        
+        # accumulate
+        outputs = torch.cat(global_comp).sum().div(batch_size)
+
+        return outputs
+    
+

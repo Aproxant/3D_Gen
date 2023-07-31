@@ -7,22 +7,16 @@ import torch
 import nrrd
 import os
 from itertools import groupby
-
-
+from config import cfg
+import numpy as np
 
 class GenerateDataLoader(Dataset):
-    def __init__(self, input_data,dataset_name,path,labelEnc,dict_word2idx,mode):
+    def __init__(self, input_data,path,dict_word2idx,mode):
         self.embedding_data = input_data
-        self.dataset=dataset_name
         self.solid_file=path
-        self.labelEnc=labelEnc
         self.dict_word2idx=dict_word2idx
         self.mode=mode
         
-        self.sw_nltk = stopwords.words('english')
-        
-        self.lemmatizer = WordNetLemmatizer() 
-
 
     def __len__(self):
         return len(self.embedding_data)
@@ -30,42 +24,30 @@ class GenerateDataLoader(Dataset):
     def __getitem__(self, idx):
         model_id = self.embedding_data[idx][0]
         label = self.embedding_data[idx][1]
-        caption = self.embedding_data[idx][2]
-        if self.mode=='train':           
-            encodedLabel=self.embedding_data[idx][3]
-        else:
-            encodedLabel=self.labelEnc[label]
-            words = [self.lemmatizer.lemmatize(word) for word in caption.split() if word.lower() not in self.sw_nltk]
-            caption = " ".join(words)
-            
-
+        captions = self.embedding_data[idx][2]
             
         indices = []
             
-        for word in caption.split():
+        for word in captions:
             if word in self.dict_word2idx.keys():
                 indices.append(int(self.dict_word2idx[word]))
             else:
                 indices.append(int(self.dict_word2idx["<UNK>"]))
-        caption=indices
+        
+        if len(indices)>cfg.EMBEDDING_CAPTION_LEN:
+            indices=indices[:cfg.EMBEDDING_CAPTION_LEN]
 
-        length = len(caption)            
-
-        if self.dataset== 'stanford_data':
-            voxel,_=nrrd.read(os.path.join(self.solid_file,model_id,model_id+'.nrrd'))
-            voxel = torch.FloatTensor(voxel)
-            voxel /= 255.
-
-        elif self.dataset == 'primitives':
-            voxel,_ = nrrd.read(os.path.join(self.solid_file,'primitives.v2',label,label+'_'+model_id+'.nrrd'))
-            voxel = torch.FloatTensor(voxel)
-            voxel /= 255.   
+        length = len(indices)            
 
 
-        return model_id, label, encodedLabel, caption, length, voxel
+        voxel,_=nrrd.read(os.path.join(self.solid_file,model_id,model_id+'.nrrd'))
+        voxel = torch.FloatTensor(voxel)
+        voxel /=255.
+
+
+
+        return model_id, label, indices, length, voxel
     
-
-
 
 
 def check_dataset(dataset, batch_size):
@@ -76,30 +58,16 @@ def check_dataset(dataset, batch_size):
     return flag
 
 def collate_embedding(data):
-    #tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-    model_ids, labels,encodedLabel, captions, lengths, voxels = zip(*data)
+    model_ids, labels, captions, lengths, voxels = zip(*data)
     voxels = torch.stack(voxels, 0)
 
-  
-    curr_len=max(lengths)
-
-    if 10<max(lengths):
-        max_len=10
-    else:
-        max_len=curr_len
-    
-    merge_caps = torch.zeros(len(captions), max_len).long()
+    merge_caps = torch.zeros(len(captions), cfg.EMBEDDING_CAPTION_LEN).long()
 
     for i, cap in enumerate(captions):
-        #tokens = tokenizer.tokenize(cap,padding='max_length', truncation=True,max_length=max_len)
-        #merge_caps[i] = torch.LongTensor(tokenizer.convert_tokens_to_ids(tokens))
         end = int(lengths[i])
-        if end>max_len:
-            cap,end=take_most_important_words(cap,max_len)
-            #end=max_len
         merge_caps[i, :end] = torch.LongTensor(cap[:end])
     
-    return model_ids,  labels,torch.Tensor(encodedLabel), merge_caps, torch.Tensor(list(lengths)),voxels
+    return model_ids,  torch.Tensor(labels), merge_caps, torch.Tensor(list(lengths)),voxels
 
 def take_most_important_words(cap,length):
     max_w=[]

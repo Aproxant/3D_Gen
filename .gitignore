@@ -7,8 +7,8 @@
 
 # Local History for Visual Studio Code
 .history/
-
+shapenet/
 # Built Visual Studio Code Extensions
 *.vsix
-
+test.ipynb
 nrrd_256_filter_div_32_solid/
