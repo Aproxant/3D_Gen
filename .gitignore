@@ -12,3 +12,5 @@ shapenet/
 *.vsix
 test.ipynb
 nrrd_256_filter_div_32_solid/
+ __pycache__/
+ *.pycgit log
