@@ -115,7 +115,7 @@ class Read_Load_BuildBatch():
         
         for phase in ['train','test','val']:
             # get all combinations
-            """
+            
             data_comb=[]
 
             data_group=getattr(self, "data_group_{}".format(phase))
@@ -175,5 +175,6 @@ class Read_Load_BuildBatch():
 
 
             setattr(self, "data_agg_{}".format(phase), data)
+            """
             
             

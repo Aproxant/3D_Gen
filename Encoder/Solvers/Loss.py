@@ -96,3 +96,115 @@ class InstanceMetricLoss(nn.Module):
         return outputs
     
 
+class TripletLoss(nn.Module):
+    def __init__(self, margin=1.,device='cpu'):
+        super(TripletLoss, self).__init__()
+        self.margin = margin
+        self.device=device
+        
+    def calc_euclidean(self, x1, x2):
+        return (x1 - x2).pow(2).sum(1)
+    
+    def forward(self, inputs):
+
+        batch_size = inputs.size(0)
+
+        anchor_idx=[k*3 for k in range(batch_size // 3)]
+        positive_idx=[k*3+1 for k in range(batch_size // 3)]
+        negative_idx=[k*3+2 for k in range(batch_size // 3)]
+
+        anchor = inputs[anchor_idx]
+        positive = inputs[positive_idx]
+        negative = inputs[negative_idx]
+
+
+        
+        distance_positive = self.calc_euclidean(anchor, positive)
+        distance_negative = self.calc_euclidean(anchor, negative)
+
+        losses = torch.relu(distance_positive - distance_negative + self.margin)
+
+        return losses.mean()
+
+
+class NPairLoss(nn.Module):
+    """
+    N-Pair loss
+    Sohn, Kihyuk. "Improved Deep Metric Learning with Multi-class N-pair Loss Objective," Advances in Neural Information
+    Processing Systems. 2016.
+    """
+
+    def __init__(self, l2_reg=0.2,device='cpu'):
+        super(NPairLoss, self).__init__()
+        self.l2_reg = l2_reg
+        self.device=device
+        
+    def forward(self, embeddings):
+        labels=[]
+        [labels.extend([i,i]) for i in range(embeddings.shape[0]//2)]
+        labels=np.array(labels)
+
+        n_pairs, n_negatives = self.get_n_pairs(labels)
+
+        anchors = embeddings[n_pairs[:, 0]]    # (n, embedding_size)
+        positives = embeddings[n_pairs[:,1]]  # (n, embedding_size)
+        negatives = embeddings[n_negatives]    # (n, n-1, embedding_size)
+
+        losses = self.n_pair_loss(anchors, positives, negatives) + self.l2_reg * self.l2_loss(anchors, positives)
+
+        return losses
+
+    def get_n_pairs(self,labels):
+        """
+        Get index of n-pairs and n-negatives
+        :param labels: label vector of mini-batch
+        :return: A tuple of n_pairs (n, 2)
+                        and n_negatives (n, n-1)
+        """
+        n_pairs = []
+        for label in set(labels):
+            label_mask = (labels == label)
+            label_indices = np.where(label_mask)[0]
+            if len(label_indices) < 2:
+                continue
+            n_pairs.append([label_indices[0], label_indices[1]])
+    
+        n_pairs = np.array(n_pairs)
+
+        n_negatives = []
+        for i in range(len(n_pairs)):
+            negative = np.append(n_pairs[:i, 1], n_pairs[i+1:, 1])
+            n_negatives.append(negative)
+
+        n_negatives = np.array(n_negatives)
+
+        return torch.LongTensor(n_pairs).to(self.device), torch.LongTensor(n_negatives).to(self.device)
+
+    def n_pair_loss(self,anchors, positives, negatives):
+        """
+        Calculates N-Pair loss
+        :param anchors: A torch.Tensor, (n, embedding_size)
+        :param positives: A torch.Tensor, (n, embedding_size)
+        :param negatives: A torch.Tensor, (n, n-1, embedding_size)
+        :return: A scalar
+        """
+        anchors = torch.unsqueeze(anchors, dim=1)  # (n, 1, embedding_size)
+        positives = torch.unsqueeze(positives, dim=1)  # (n, 1, embedding_size)
+
+        x = torch.matmul(anchors, (negatives - positives).transpose(1, 2))  # (n, 1, n-1)
+        x = torch.sum(torch.exp(x), 2)  # (n, 1)
+        loss = torch.mean(torch.log(1+x))
+        return loss
+
+    def l2_loss(self,anchors, positives):
+        """
+        Calculates L2 norm regularization loss
+        :param anchors: A torch.Tensor, (n, embedding_size)
+        :param positives: A torch.Tensor, (n, embedding_size)
+        :return: A scalar
+        """
+        return torch.sum(anchors ** 2 + positives ** 2) / anchors.shape[0]
+
+
+
+

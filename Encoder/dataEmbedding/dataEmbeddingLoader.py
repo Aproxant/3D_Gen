@@ -11,11 +11,10 @@ from config import cfg
 import numpy as np
 
 class GenerateDataLoader(Dataset):
-    def __init__(self, input_data,path,dict_word2idx,mode):
+    def __init__(self, input_data,path,dict_word2idx):
         self.embedding_data = input_data
         self.solid_file=path
         self.dict_word2idx=dict_word2idx
-        self.mode=mode
         
 
     def __len__(self):
@@ -39,10 +38,11 @@ class GenerateDataLoader(Dataset):
 
         length = len(indices)            
 
-
-        voxel,_=nrrd.read(os.path.join(self.solid_file,model_id,model_id+'.nrrd'))
-        voxel = torch.FloatTensor(voxel)
-        voxel /=255.
+        voxel=None
+        if cfg.EMBEDDING_SHAPE_ENCODER:
+            voxel,_=nrrd.read(os.path.join(self.solid_file,model_id,model_id+'.nrrd'))
+            voxel = torch.FloatTensor(voxel)
+            voxel /=255.
 
 
 
@@ -59,7 +59,11 @@ def check_dataset(dataset, batch_size):
 
 def collate_embedding(data):
     model_ids, labels, captions, lengths, voxels = zip(*data)
-    voxels = torch.stack(voxels, 0)
+
+    if cfg.EMBEDDING_SHAPE_ENCODER:
+        voxels = torch.stack(voxels, 0)
+
+        
 
     merge_caps = torch.zeros(len(captions), cfg.EMBEDDING_CAPTION_LEN).long()
 

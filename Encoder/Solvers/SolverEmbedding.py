@@ -32,46 +32,66 @@ class Solver():
             pbar = tqdm_nb()
             pbar.reset(total=len(self.dataloader['train']))
 
-            train_log = {
-                'total_loss': [],
-                'walker_loss_tst': [],
-                'walker_loss_sts': [],
-                'visit_loss_ts': [],
-                'visit_loss_st': [],
-                'metric_loss_st': [],
-                'metric_loss_tt': [],
-                'shape_norm_penalty': [],
-                'text_norm_penalty': [],
-                }
-            val_log = {
-                'total_loss': [],
-                'walker_loss_tst': [],
-                'walker_loss_sts': [],
-                'visit_loss_ts': [],
-                'visit_loss_st': [],
-                'metric_loss_st': [],
-                'metric_loss_tt': [],
-                'shape_norm_penalty': [],
-                'text_norm_penalty': []
-                }
+            if cfg.EMBEDDING_SHAPE_ENCODER:
+
+                train_log = {
+                    'total_loss': [],
+                    'walker_loss_tst': [],
+                    'walker_loss_sts': [],
+                    'visit_loss_ts': [],
+                    'visit_loss_st': [],
+                    'metric_loss_st': [],
+                    'metric_loss_tt': [],
+                    'shape_norm_penalty': [],
+                    'text_norm_penalty': [],
+                    }
+                val_log = {
+                    'total_loss': [],
+                    'walker_loss_tst': [],
+                    'walker_loss_sts': [],
+                    'visit_loss_ts': [],
+                    'visit_loss_st': [],
+                    'metric_loss_st': [],
+                    'metric_loss_tt': [],
+                    'shape_norm_penalty': [],
+                    'text_norm_penalty': []
+                    }
+                
+                self.shape_encoder.train()
             
-            self.shape_encoder.train()
+            else:
+                train_log = {
+                    'total_loss': [],
+                    'metric_loss_tt': [],
+                    'text_norm_penalty': [],
+                    }
+                val_log = {
+                    'total_loss': [],
+                    'metric_loss_tt': [],
+                    'text_norm_penalty': [],
+                    }
 
             self.text_encoder.train()
-            iter=0
+            #iter=0
             for i,(_,labels,texts , _, shapes) in enumerate(self.dataloader['train']):
                 pbar.update()
-
                 losses = self.forward(shapes, texts, labels)
-                train_log['total_loss'].append(losses['total_loss'].item())
-                train_log['walker_loss_tst'].append(losses['walker_loss_tst'].item())
-                train_log['walker_loss_sts'].append(losses['walker_loss_sts'].item())
-                train_log['visit_loss_ts'].append(losses['visit_loss_ts'].item())
-                train_log['visit_loss_st'].append(losses['visit_loss_st'].item())
-                train_log['metric_loss_st'].append(losses['metric_loss_st'].item())
-                train_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
-                train_log['shape_norm_penalty'].append(losses['shape_norm_penalty'].item())
-                train_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
+
+                if cfg.EMBEDDING_SHAPE_ENCODER:
+
+                    train_log['total_loss'].append(losses['total_loss'].item())
+                    train_log['walker_loss_tst'].append(losses['walker_loss_tst'].item())
+                    train_log['walker_loss_sts'].append(losses['walker_loss_sts'].item())
+                    train_log['visit_loss_ts'].append(losses['visit_loss_ts'].item())
+                    train_log['visit_loss_st'].append(losses['visit_loss_st'].item())
+                    train_log['metric_loss_st'].append(losses['metric_loss_st'].item())
+                    train_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
+                    train_log['shape_norm_penalty'].append(losses['shape_norm_penalty'].item())
+                    train_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
+                else:
+                    train_log['total_loss'].append(losses['total_loss'].item())                   
+                    train_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
+                    #train_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
 
                 # back prop
                 self.optimizer.zero_grad()
@@ -91,11 +111,12 @@ class Solver():
                     % (epoch_id+1, epoch, i+1, len(self.dataloader['train']), losses['total_loss'].item())
                 pbar.set_description(desc)
                 
-            
             # validate
             val_log = self.validate(val_log)
             
+
             self._epoch_report(train_log, val_log, epoch_id, epoch)
+            
 
             
             # evaluate
@@ -125,15 +146,16 @@ class Solver():
 
     def forward(self, shapes, texts, labels):
 
-        batch_size = shapes.size(0)
+        batch_size = texts.size(0)
         texts = texts.to(self.device)
         text_labels = labels.to(self.device)
-
-        shapes = shapes.to(self.device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
-        shape_labels = labels.to(self.device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
+        s=None
+        shape_labels=None
+        if cfg.EMBEDDING_SHAPE_ENCODER:
+            shapes = shapes.to(self.device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
+            shape_labels = labels.to(self.device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
+            s = self.shape_encoder(shapes)
         
-
-        s = self.shape_encoder(shapes)
         t = self.text_encoder(texts)
 
         losses = self.compute_loss(s, t, shape_labels, text_labels)
@@ -144,61 +166,73 @@ class Solver():
     def compute_loss(self,s, t, s_labels, t_labels):
 
         batch_size = t.size(0)
+        if cfg.EMBEDDING_SHAPE_ENCODER:
+            equality_matrix = t_labels.reshape(-1,1).eq(t_labels).float()
+            p_target = (equality_matrix / equality_matrix.sum(1))
         
-        equality_matrix = t_labels.reshape(-1,1).eq(t_labels).float()
-        p_target = (equality_matrix / equality_matrix.sum(1))
-        
 
-        walker_loss_tst = self.criterion['walker'](t, s, p_target)
-        visit_loss_ts = self.criterion['visit'](t, s)
+            walker_loss_tst = self.criterion['walker'](t, s, p_target)
+            visit_loss_ts = self.criterion['visit'](t, s)
 
 
-        equality_matrix_s = s_labels.reshape(-1,1).eq(s_labels).float()
-        p_target_s = (equality_matrix_s / equality_matrix_s.sum(1))
+            equality_matrix_s = s_labels.reshape(-1,1).eq(s_labels).float()
+            p_target_s = (equality_matrix_s / equality_matrix_s.sum(1))
 
 
-        walker_loss_sts = self.criterion['walker'](s, t, p_target_s)
-        visit_loss_st = self.criterion['visit'](s, t)
+            walker_loss_sts = self.criterion['walker'](s, t, p_target_s)
+            visit_loss_st = self.criterion['visit'](s, t)
 
         
         metric_loss_tt = self.criterion['metric'](t)
+        
+        if cfg.EMBEDDING_SHAPE_ENCODER:
+            s_mask = torch.BoolTensor([[1], [0]]).repeat(batch_size // 2, cfg.EMBEDDING_DIM).to(self.device)
+            t_mask = torch.BoolTensor([[0], [1]]).repeat(batch_size // 2, cfg.EMBEDDING_DIM).to(self.device)
+            selected_s = s
+            selected_t = t.index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
+            masked_s = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(s_mask, selected_s)
+            masked_t = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(t_mask, selected_t)
+            embedding = masked_s + masked_t
 
-        s_mask = torch.BoolTensor([[1], [0]]).repeat(batch_size // 2, cfg.EMBEDDING_DIM).to(self.device)
-        t_mask = torch.BoolTensor([[0], [1]]).repeat(batch_size // 2, cfg.EMBEDDING_DIM).to(self.device)
-        selected_s = s
-        selected_t = t.index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
-        masked_s = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(s_mask, selected_s)
-        masked_t = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(t_mask, selected_t)
-        embedding = masked_s + masked_t
+            metric_loss_st = self.criterion['metric'](embedding)
+                        
+            flipped_t = t.index_select(0, torch.LongTensor([i * 2 + 1 for i in range(batch_size // 2)]).to(self.device))
+            flipped_masked_t = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(t_mask, flipped_t)
+            embedding = masked_s + flipped_masked_t
+            metric_loss_st += self.criterion['metric'](embedding)
+        
 
-        metric_loss_st = self.criterion['metric'](embedding)
-                    
-        flipped_t = t.index_select(0, torch.LongTensor([i * 2 + 1 for i in range(batch_size // 2)]).to(self.device))
-        flipped_masked_t = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(t_mask, flipped_t)
-        embedding = masked_s + flipped_masked_t
-        metric_loss_st += self.criterion['metric'](embedding)
+        if cfg.EMBEDDING_SHAPE_ENCODER:
+            shape_norm_penalty = self._norm_penalty(s)
 
+        #text_norm_penalty = self._norm_penalty(t)
 
+        if cfg.EMBEDDING_SHAPE_ENCODER:
+            loss = cfg.WALKER_WEIGHT*(walker_loss_tst + walker_loss_sts) + cfg.VISIT_WEIGHT*(visit_loss_ts + visit_loss_st)
+            loss +=  cfg.METRIC_WEIGHT*(metric_loss_st + metric_loss_tt)
+            loss += (cfg.SHAPE_NORM_MULTIPLIER* shape_norm_penalty + cfg.TEXT_NORM_MULTIPLIER * text_norm_penalty)
+        else:
+            loss =  cfg.METRIC_WEIGHT*metric_loss_tt
+            #loss += cfg.TEXT_NORM_MULTIPLIER * text_norm_penalty
 
-        shape_norm_penalty = self._norm_penalty(s)
-        text_norm_penalty = self._norm_penalty(t)
-
-
-        loss = cfg.WALKER_WEIGHT*(walker_loss_tst + walker_loss_sts) + cfg.VISIT_WEIGHT*(visit_loss_ts + visit_loss_st)
-        loss +=  cfg.METRIC_WEIGHT*(metric_loss_st + metric_loss_tt)
-        loss += (cfg.SHAPE_NORM_MULTIPLIER* shape_norm_penalty + cfg.TEXT_NORM_MULTIPLIER * text_norm_penalty)
-
-        losses = {
-            'total_loss': loss,
-            'walker_loss_tst': walker_loss_tst*cfg.WALKER_WEIGHT,
-            'walker_loss_sts': walker_loss_sts*cfg.WALKER_WEIGHT,
-            'visit_loss_ts': visit_loss_ts*cfg.VISIT_WEIGHT,
-            'visit_loss_st': visit_loss_st*cfg.VISIT_WEIGHT,
-            'metric_loss_st': metric_loss_st*cfg.METRIC_WEIGHT,
-            'metric_loss_tt': metric_loss_tt*cfg.METRIC_WEIGHT,
-            'shape_norm_penalty': shape_norm_penalty*cfg.SHAPE_NORM_MULTIPLIER,
-            'text_norm_penalty': text_norm_penalty*cfg.TEXT_NORM_MULTIPLIER
-            }
+        if cfg.EMBEDDING_SHAPE_ENCODER:
+            losses = {
+                'total_loss': loss,
+                'walker_loss_tst': walker_loss_tst*cfg.WALKER_WEIGHT,
+                'walker_loss_sts': walker_loss_sts*cfg.WALKER_WEIGHT,
+                'visit_loss_ts': visit_loss_ts*cfg.VISIT_WEIGHT,
+                'visit_loss_st': visit_loss_st*cfg.VISIT_WEIGHT,
+                'metric_loss_st': metric_loss_st*cfg.METRIC_WEIGHT,
+                'metric_loss_tt': metric_loss_tt*cfg.METRIC_WEIGHT,
+                'shape_norm_penalty': shape_norm_penalty*cfg.SHAPE_NORM_MULTIPLIER,
+                'text_norm_penalty': text_norm_penalty*cfg.TEXT_NORM_MULTIPLIER
+                }
+        else:  
+            losses = {
+                'total_loss': loss,
+                'metric_loss_tt': metric_loss_tt*cfg.METRIC_WEIGHT,
+                #'text_norm_penalty': text_norm_penalty*cfg.TEXT_NORM_MULTIPLIER
+                }
 
         return losses
 
@@ -210,8 +244,10 @@ class Solver():
 
     def validate(self, val_log):
         print("Validating...\n")
-        self.shape_encoder.eval()
+        if cfg.EMBEDDING_SHAPE_ENCODER:
+            self.shape_encoder.eval()
         self.text_encoder.eval()
+
         pbar = tqdm_nb()
         pbar.reset(total=len(self.dataloader['val']))
 
@@ -223,15 +259,23 @@ class Solver():
 
             #print(losses['total_loss'].item())
             # record
-            val_log['total_loss'].append(losses['total_loss'].item())
-            val_log['walker_loss_tst'].append(losses['walker_loss_tst'].item())
-            val_log['walker_loss_sts'].append(losses['walker_loss_sts'].item())
-            val_log['visit_loss_ts'].append(losses['visit_loss_ts'].item())
-            val_log['visit_loss_st'].append(losses['visit_loss_st'].item())
-            val_log['metric_loss_st'].append(losses['metric_loss_st'].item())
-            val_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
-            val_log['shape_norm_penalty'].append(losses['shape_norm_penalty'].item())
-            val_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
+            if cfg.EMBEDDING_SHAPE_ENCODER:
+
+                val_log['total_loss'].append(losses['total_loss'].item())
+                val_log['walker_loss_tst'].append(losses['walker_loss_tst'].item())
+                val_log['walker_loss_sts'].append(losses['walker_loss_sts'].item())
+                val_log['visit_loss_ts'].append(losses['visit_loss_ts'].item())
+                val_log['visit_loss_st'].append(losses['visit_loss_st'].item())
+                val_log['metric_loss_st'].append(losses['metric_loss_st'].item())
+                val_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
+                val_log['shape_norm_penalty'].append(losses['shape_norm_penalty'].item())
+            
+                val_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
+            else:
+                val_log['total_loss'].append(losses['total_loss'].item())
+                val_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
+                #val_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
+
             desc = 'Validating: [%d/%d], Total loss: %.4f' \
                     % (i+1, len(self.dataloader['val']), losses['total_loss'].item())
             pbar.set_description(desc)
@@ -240,7 +284,8 @@ class Solver():
         return val_log
     
     def evaluate(self,shape_encoder, text_encoder,idx_word):
-        shape_encoder.eval()
+        if cfg.EMBEDDING_SHAPE_ENCODER:
+            shape_encoder.eval()
         text_encoder.eval()
 
         print("Evaluating...")
@@ -256,13 +301,15 @@ class Solver():
 
         for j,(model_id,_,texts , _, shapes) in enumerate(self.dataloader[phase]):
             pbar.update()
-            shapes = shapes.to(self.device)
+            shape_embedding=[None for _ in range(len(model_id))]
+            if cfg.EMBEDDING_SHAPE_ENCODER:
+                shapes = shapes.to(self.device)
+                shape_embedding = self.shape_encoder(shapes)
             texts = texts.to(self.device)
-
-            shape_embedding = self.shape_encoder(shapes)
+           
             text_embedding = self.text_encoder(texts)
+            for i,elem in enumerate(model_id):    
 
-            for i,elem in enumerate(model_id):      
                 caption=" ".join([idx_word[item.item()] for item in texts[i] if item.item()!=0])   
                 if elem in data.keys():
                     data[elem]['text_embedding'].append((caption,text_embedding[i])) 
@@ -272,50 +319,68 @@ class Solver():
                         'text_embedding': [(caption,text_embedding[i])]
                     }
             desc = 'Evaluating: [%d/%d]' \
-                    % (j+1, len(self.dataloader['val']))
+                    % (j+1, len(self.dataloader[phase]))
             pbar.set_description(desc)
         return data
 
 
     def _epoch_report(self,train_log, val_log, epoch_id, epoch):
         # show report
-        print("epoch [{}/{}] done...".format(epoch_id+1, epoch))
-        print("------------------------summary------------------------")
-        print("[train] total_loss: %f" % (
-            np.mean(train_log['total_loss'])
-        ))
-        print("[val]   total_loss: %f" % (
-            np.mean(val_log['total_loss'])
-        ))
-        print("[train] walker_loss_tst: %f, walker_loss_sts: %f" % (
-            np.mean(train_log['walker_loss_tst']),
-            np.mean(train_log['walker_loss_sts'])
-        ))
-        print("[val]   walker_loss_tst: %f, walker_loss_sts: %f" % (
-            np.mean(val_log['walker_loss_tst']),
-            np.mean(val_log['walker_loss_sts'])
-        ))
-        print("[train] visit_loss_ts: %f, visit_loss_st: %f" % (
-            np.mean(train_log['visit_loss_ts']),
-            np.mean(train_log['visit_loss_st'])
-        ))
-        print("[val]   visit_loss_ts: %f, visit_loss_st: %f" % (
-            np.mean(val_log['visit_loss_ts']),
-            np.mean(val_log['visit_loss_st'])
-        ))
-        print("[train] metric_loss_st: %f, metric_loss_tt: %f" % (
-            np.mean(train_log['metric_loss_st']),
-            np.mean(train_log['metric_loss_tt'])
-        ))
-        print("[val]   metric_loss_st: %f, metric_loss_tt: %f" % (
-            np.mean(val_log['metric_loss_st']),
-            np.mean(val_log['metric_loss_tt'])
-        ))
-        print("[train] shape_norm_penalty: %f, text_norm_penalty: %f" % (
-            np.mean(train_log['shape_norm_penalty']),
-            np.mean(train_log['text_norm_penalty'])
-        ))
-        print("[val]   shape_norm_penalty: %f, text_norm_penalty: %f\n" % (
-            np.mean(val_log['shape_norm_penalty']),
-            np.mean(val_log['text_norm_penalty'])
-        ))
+        if cfg.EMBEDDING_SHAPE_ENCODER:
+
+            print("epoch [{}/{}] done...".format(epoch_id+1, epoch))
+            print("------------------------summary------------------------")
+            print("[train] total_loss: %f" % (
+                np.mean(train_log['total_loss'])
+            ))
+            print("[val]   total_loss: %f" % (
+                np.mean(val_log['total_loss'])
+            ))
+
+            print("[train] walker_loss_tst: %f, walker_loss_sts: %f" % (
+                np.mean(train_log['walker_loss_tst']),
+                np.mean(train_log['walker_loss_sts'])
+            ))
+            print("[val]   walker_loss_tst: %f, walker_loss_sts: %f" % (
+                np.mean(val_log['walker_loss_tst']),
+                np.mean(val_log['walker_loss_sts'])
+            ))
+            print("[train] visit_loss_ts: %f, visit_loss_st: %f" % (
+                np.mean(train_log['visit_loss_ts']),
+                np.mean(train_log['visit_loss_st'])
+            ))
+            print("[val]   visit_loss_ts: %f, visit_loss_st: %f" % (
+                np.mean(val_log['visit_loss_ts']),
+                np.mean(val_log['visit_loss_st'])
+            ))
+            print("[train] metric_loss_st: %f, metric_loss_tt: %f" % (
+                np.mean(train_log['metric_loss_st']),
+                np.mean(train_log['metric_loss_tt'])
+            ))
+            print("[val]   metric_loss_st: %f, metric_loss_tt: %f" % (
+                np.mean(val_log['metric_loss_st']),
+                np.mean(val_log['metric_loss_tt'])
+            ))
+            print("[train] shape_norm_penalty: %f, text_norm_penalty: %f" % (
+                np.mean(train_log['shape_norm_penalty']),
+                np.mean(train_log['text_norm_penalty'])
+            ))
+            print("[val]   shape_norm_penalty: %f, text_norm_penalty: %f\n" % (
+                np.mean(val_log['shape_norm_penalty']),
+                np.mean(val_log['text_norm_penalty'])
+            ))
+        else:
+            print("epoch [{}/{}] done...".format(epoch_id+1, epoch))
+            print("------------------------summary------------------------")
+            print("[train] total_loss: %f" % (
+                np.mean(train_log['total_loss'])
+            ))
+            print("[val]   total_loss: %f" % (
+                np.mean(val_log['total_loss'])
+            ))
+            print("[train] metric_loss_tt: %f" % (
+                np.mean(train_log['metric_loss_tt'])
+            ))
+            print("[val]  metric_loss_tt: %f" % (
+                np.mean(val_log['metric_loss_tt'])
+            ))
