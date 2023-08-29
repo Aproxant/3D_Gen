@@ -23,7 +23,7 @@ __C.EMBEDDING_SHAPENET='./../shapenet/shapenet.json'
 __C.EMBEDDING_CAPTION_CSV="captions.tablechair.csv"
 __C.EMBEDDING_VOXEL_FOLDER='./../nrrd_256_filter_div_32_solid'
 
-__C.EMBEDDING_MODELS_PATH='./../SavedModels'
+__C.EMBEDDING_TEXT_MODELS_PATH='./../SavedModels/text_encoder.pth'
 __C.EMBEDDING_SAVE_PATH='./../GeneratedEmbeddings'
 
 __C.EMBEDDING_SHAPE_ENCODER=False

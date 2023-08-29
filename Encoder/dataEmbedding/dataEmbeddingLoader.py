@@ -44,7 +44,7 @@ class GenerateDataLoader(Dataset):
             voxel = torch.FloatTensor(voxel)
             voxel /=255.
 
-
+        
 
         return model_id, label, indices, length, voxel
     
