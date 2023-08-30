@@ -8,23 +8,57 @@ from config import cfg
 from Solvers.Evaluation import compute_metrics
 import os
 from tqdm.notebook import tqdm as tqdm_nb
+from torch.utils.data import DataLoader
+from dataEmbedding.dataEmbeddingLoader import GenerateDataLoader,check_dataset,collate_embedding
 
 
 class Solver():
-    def __init__(self, text_encoder,shape_encoder,dataloader, optimizer, criterion, batch_size,device):
-        self.dataloader = dataloader
+    def __init__(self, text_encoder,shape_encoder,stanData, optimizer, criterion, batch_size,mode,device):
         self.text_encoder=text_encoder
         self.shape_encoder=shape_encoder
         self.optimizer = optimizer
         self.batch_size = batch_size
         self.criterion = criterion
         self.device=device
-
+        self.stanData=stanData
         self.eval_acc = np.asarray([0.] * 5)
         self.eval_ckpts = [None] * 5
+        self.mode=mode
+
+    def dynamicBatchConstruction(self):
+        np.random.seed()
+
+        train_dataset = GenerateDataLoader(self.stanData.data_agg_train,self.stanData.data_dir,self.stanData.dict_word2idx)
+
+        val_dataset = GenerateDataLoader(self.stanData.data_agg_val,self.stanData.data_dir,self.stanData.dict_word2idx)
+
+        test_dataset=GenerateDataLoader(self.stanData.data_agg_test,self.stanData.data_dir,self.stanData.dict_word2idx)
+
+        self.dataloader = {
+            'train': DataLoader(
+            train_dataset, 
+            batch_size=cfg.EMBEDDING_BATCH_SIZE * 2,              
+            drop_last=check_dataset(train_dataset, cfg.EMBEDDING_BATCH_SIZE * 2),
+            collate_fn=collate_embedding,
+            num_workers=4
+            ),
+            'val': DataLoader(
+            val_dataset, 
+            batch_size=cfg.EMBEDDING_BATCH_SIZE*2,
+            collate_fn=collate_embedding,
+            num_workers=4
+            ),
+            'test': DataLoader(
+            test_dataset, 
+            batch_size=cfg.EMBEDDING_BATCH_SIZE*2,
+            collate_fn=collate_embedding
+            #num_workers=2
+            )
+            }    
+        
     def train(self, epoch,idx_word):
         scheduler = StepLR(self.optimizer, step_size=cfg.EMBEDDING_SCHEDULER_STEP, gamma=cfg.EMBEDDING_SCHEDULER_GAMMA)
-        
+        self.dynamicBatchConstruction()
         for epoch_id in range(epoch):
             print("Epoch [{}/{}] starting...\n".format(epoch_id+1, epoch))
 
@@ -33,7 +67,7 @@ class Solver():
             pbar.reset(total=len(self.dataloader['train']))
 
             if cfg.EMBEDDING_SHAPE_ENCODER:
-
+                
                 train_log = {
                     'total_loss': [],
                     'walker_loss_tst': [],
@@ -73,6 +107,8 @@ class Solver():
 
             self.text_encoder.train()
             #iter=0
+            if self.mode=='online':
+                self.dynamicBatchConstruction()
             for i,(_,labels,texts , _, shapes) in enumerate(self.dataloader['train']):
                 pbar.update()
                 losses = self.forward(shapes, texts, labels)
@@ -91,7 +127,7 @@ class Solver():
                 else:
                     train_log['total_loss'].append(losses['total_loss'].item())                   
                     train_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
-                    #train_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
+                    train_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
 
                 # back prop
                 self.optimizer.zero_grad()
@@ -131,8 +167,8 @@ class Solver():
                 if max(self.eval_acc)<cur_eval_acc:
                     print("saving models...\n")
 
-                    torch.save(self.shape_encoder.state_dict(), os.path.join(cfg.EMBEDDING_MODELS_PATH, "shape_encoder.pth"))
-                    torch.save(self.text_encoder.state_dict(), os.path.join(cfg.EMBEDDING_MODELS_PATH,"text_encoder.pth"))
+                    torch.save(self.shape_encoder.state_dict(), os.path.join(cfg.EMBEDDING_SAVE_PATH, "shape_encoder.pth"))
+                    torch.save(self.text_encoder.state_dict(), os.path.join(cfg.EMBEDDING_SAVE_PATH,"text_encoder.pth"))
 
                 self.eval_acc = np.roll(self.eval_acc, 1)
                 self.eval_acc[0] = cur_eval_acc
@@ -183,7 +219,7 @@ class Solver():
             visit_loss_st = self.criterion['visit'](s, t)
 
         
-        metric_loss_tt = self.criterion['metric'](t)
+        metric_loss_tt = self.criterion['metric'](t,t_labels)
         
         if cfg.EMBEDDING_SHAPE_ENCODER:
             s_mask = torch.BoolTensor([[1], [0]]).repeat(batch_size // 2, cfg.EMBEDDING_DIM).to(self.device)
@@ -205,7 +241,7 @@ class Solver():
         if cfg.EMBEDDING_SHAPE_ENCODER:
             shape_norm_penalty = self._norm_penalty(s)
 
-        #text_norm_penalty = self._norm_penalty(t)
+        text_norm_penalty = self._norm_penalty(t)
 
         if cfg.EMBEDDING_SHAPE_ENCODER:
             loss = cfg.WALKER_WEIGHT*(walker_loss_tst + walker_loss_sts) + cfg.VISIT_WEIGHT*(visit_loss_ts + visit_loss_st)
@@ -213,7 +249,7 @@ class Solver():
             loss += (cfg.SHAPE_NORM_MULTIPLIER* shape_norm_penalty + cfg.TEXT_NORM_MULTIPLIER * text_norm_penalty)
         else:
             loss =  cfg.METRIC_WEIGHT*metric_loss_tt
-            #loss += cfg.TEXT_NORM_MULTIPLIER * text_norm_penalty
+            loss += cfg.TEXT_NORM_MULTIPLIER * text_norm_penalty
 
         if cfg.EMBEDDING_SHAPE_ENCODER:
             losses = {
@@ -231,7 +267,7 @@ class Solver():
             losses = {
                 'total_loss': loss,
                 'metric_loss_tt': metric_loss_tt*cfg.METRIC_WEIGHT,
-                #'text_norm_penalty': text_norm_penalty*cfg.TEXT_NORM_MULTIPLIER
+                'text_norm_penalty': text_norm_penalty*cfg.TEXT_NORM_MULTIPLIER
                 }
 
         return losses

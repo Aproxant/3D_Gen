@@ -14,10 +14,12 @@ import numpy as np
 class Read_Load_BuildBatch():
     def __init__(self, data_dir,batch_size):
         self.data_dir=data_dir
+        self.batch_size=batch_size
+
         self.stanfordDataReader()
         self.build_word_dict()
         self.tokenize_captions()
-        self.aggregate_samples(batch_size)
+        self.aggregate_samples()
 
 
 
@@ -111,7 +113,7 @@ class Read_Load_BuildBatch():
 
             setattr(self, "data_group_{}".format(phase), data_group)
 
-    def aggregate_samples(self,batch_size):
+    def aggregate_samples(self):
         
         for phase in ['train','test','val']:
             # get all combinations
@@ -132,7 +134,7 @@ class Read_Load_BuildBatch():
             chosen_label = []
             
             while len(data) < 2 * len(data_comb):
-                if len(chosen_label) == batch_size:
+                if len(chosen_label) == self.batch_size:
                     chosen_label = []
                 idx = np.random.randint(len(data_comb))
                 if idx2label[idx] in chosen_label:

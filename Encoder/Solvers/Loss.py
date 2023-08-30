@@ -62,7 +62,7 @@ class InstanceMetricLoss(nn.Module):
         return D, Dexpm
         
 
-    def forward(self, inputs):
+    def forward(self, inputs,t):
 
         batch_size = inputs.size(0)
         
@@ -105,7 +105,7 @@ class TripletLoss(nn.Module):
     def calc_euclidean(self, x1, x2):
         return (x1 - x2).pow(2).sum(1)
     
-    def forward(self, inputs):
+    def forward(self, inputs,t_labels):
 
         batch_size = inputs.size(0)
 
@@ -139,18 +139,18 @@ class NPairLoss(nn.Module):
         self.l2_reg = l2_reg
         self.device=device
         
-    def forward(self, embeddings):
-        labels=[]
-        [labels.extend([i,i]) for i in range(embeddings.shape[0]//2)]
-        labels=np.array(labels)
+    def forward(self, embeddings,t_labels):
+        #labels=[]
 
-        n_pairs, n_negatives = self.get_n_pairs(labels)
+        #[labels.extend([i,i]) for i in range(embeddings.shape[0]//2)]
+        #labels=np.array(labels)
 
+        n_pairs, n_negatives = self.get_n_pairs(t_labels)
         anchors = embeddings[n_pairs[:, 0]]    # (n, embedding_size)
         positives = embeddings[n_pairs[:,1]]  # (n, embedding_size)
         negatives = embeddings[n_negatives]    # (n, n-1, embedding_size)
 
-        losses = self.n_pair_loss(anchors, positives, negatives) + self.l2_reg * self.l2_loss(anchors, positives)
+        losses = self.n_pair_loss(anchors, positives, negatives) #+ self.l2_reg * self.l2_loss(anchors, positives)
 
         return losses
 
@@ -161,22 +161,29 @@ class NPairLoss(nn.Module):
         :return: A tuple of n_pairs (n, 2)
                         and n_negatives (n, n-1)
         """
-        n_pairs = []
-        for label in set(labels):
-            label_mask = (labels == label)
-            label_indices = np.where(label_mask)[0]
-            if len(label_indices) < 2:
-                continue
-            n_pairs.append([label_indices[0], label_indices[1]])
+        n_pairs=[]
+        batch_size=labels.size(0)
+        anchor_idx=[k*2 for k in range(batch_size // 2)]
+        positive_idx=[k*2+1 for k in range(batch_size // 2)]
+        #n_pairs = []
+        #for label in set(labels):
+        #    label_mask = (labels == label)
+        #    label_indices = np.where(label_mask)[0]
+        #    if len(label_indices) < 2:
+        #       continue
+        for i in range(len(anchor_idx)):
+            n_pairs.append([anchor_idx[i], positive_idx[i]])
     
+        
         n_pairs = np.array(n_pairs)
 
         n_negatives = []
         for i in range(len(n_pairs)):
-            negative = np.append(n_pairs[:i, 1], n_pairs[i+1:, 1])
+            negative = np.append(n_pairs[:i,1], n_pairs[i+1:,1])
             n_negatives.append(negative)
 
         n_negatives = np.array(n_negatives)
+        
 
         return torch.LongTensor(n_pairs).to(self.device), torch.LongTensor(n_negatives).to(self.device)
 
@@ -188,11 +195,21 @@ class NPairLoss(nn.Module):
         :param negatives: A torch.Tensor, (n, n-1, embedding_size)
         :return: A scalar
         """
-        anchors = torch.unsqueeze(anchors, dim=1)  # (n, 1, embedding_size)
-        positives = torch.unsqueeze(positives, dim=1)  # (n, 1, embedding_size)
+        #anchors = torch.unsqueeze(anchors, dim=1)  # (n, 1, embedding_size)
+        #positives = torch.unsqueeze(positives, dim=1)  # (n, 1, embedding_size)
+        
+        pos_sum=(anchors @ positives.transpose(0,1)).diagonal()
+        transposed_negatives = negatives.transpose(1, 2)
 
-        x = torch.matmul(anchors, (negatives - positives).transpose(1, 2))  # (n, 1, n-1)
-        x = torch.sum(torch.exp(x), 2)  # (n, 1)
+        result = torch.zeros((anchors.shape[0], negatives.shape[1]))
+
+        # Perform the element-wise multiplications and summation
+        for i in range(anchors.shape[0]):
+            result[i] = torch.matmul(anchors[i],transposed_negatives[i])-pos_sum[i]
+
+
+        x = torch.sum(torch.exp(result), 1)
+        print(torch.log(1+x))
         loss = torch.mean(torch.log(1+x))
         return loss
 
