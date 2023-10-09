@@ -14,14 +14,13 @@ def build_embeedings_CWGAN(text_encoder_file,model,loader,save_path,device):
 
 
         data=[]
-        for (model_id,labels,texts,_ , _, ) in tqdm(loader[phase]):
+        for (model_id,_,labels,texts) in tqdm(loader[phase]):
 
             texts = texts.to(device)
 
             text_embedding = model(texts)
-
             for i,elem in enumerate(model_id):         
-                data.append((elem,labels[i],text_embedding[i]))
+                data.append((elem,labels[i].detach(),text_embedding[i].detach(),texts[i].detach()))
 
         with open(os.path.join(save_path,phase+'.p'), 'wb') as file:
             pickle.dump(data, file)

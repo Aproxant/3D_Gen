@@ -13,9 +13,8 @@ from dataEmbedding.dataEmbeddingLoader import GenerateDataLoader,check_dataset,c
 
 
 class Solver():
-    def __init__(self, text_encoder,shape_encoder,stanData, optimizer, criterion, batch_size,mode,device):
+    def __init__(self, text_encoder,stanData, optimizer, criterion, batch_size,mode,device):
         self.text_encoder=text_encoder
-        self.shape_encoder=shape_encoder
         self.optimizer = optimizer
         self.batch_size = batch_size
         self.criterion = criterion
@@ -26,32 +25,40 @@ class Solver():
         self.mode=mode
 
     def dynamicBatchConstruction(self):
-        np.random.seed()
+        if False:
+            epochData=self.stanData.returnNewEpoch('train')
+            epochDataVAL=self.stanData.returnNewEpoch('val')
 
-        train_dataset = GenerateDataLoader(self.stanData.data_agg_train,self.stanData.data_dir,self.stanData.dict_word2idx)
+            epochDataTEST=self.stanData.returnNewEpoch('test')
+        else:
+            epochData=self.stanData.returnNewEpoch2('train')
+            epochDataVAL=self.stanData.returnNewEpoch2('val')
 
-        val_dataset = GenerateDataLoader(self.stanData.data_agg_val,self.stanData.data_dir,self.stanData.dict_word2idx)
+            epochDataTEST=self.stanData.returnNewEpoch2('test')
+        train_dataset = GenerateDataLoader(epochData,self.stanData.dict_word2idx)
 
-        test_dataset=GenerateDataLoader(self.stanData.data_agg_test,self.stanData.data_dir,self.stanData.dict_word2idx)
+        val_dataset = GenerateDataLoader(epochDataVAL,self.stanData.dict_word2idx)
+
+        test_dataset=GenerateDataLoader(epochDataTEST,self.stanData.dict_word2idx)
 
         self.dataloader = {
             'train': DataLoader(
             train_dataset, 
-            batch_size=cfg.EMBEDDING_BATCH_SIZE * 2,              
-            drop_last=check_dataset(train_dataset, cfg.EMBEDDING_BATCH_SIZE * 2),
+            batch_size=cfg.EMBEDDING_BATCH_SIZE,              
+            drop_last=check_dataset(train_dataset, cfg.EMBEDDING_BATCH_SIZE),
             collate_fn=collate_embedding,
             num_workers=4
             ),
             'val': DataLoader(
             val_dataset, 
-            batch_size=cfg.EMBEDDING_BATCH_SIZE*2,
+            batch_size=cfg.EMBEDDING_BATCH_SIZE,
             collate_fn=collate_embedding,
             num_workers=4
             ),
             'test': DataLoader(
             test_dataset, 
-            batch_size=cfg.EMBEDDING_BATCH_SIZE*2,
-            collate_fn=collate_embedding
+            batch_size=cfg.EMBEDDING_BATCH_SIZE,
+            collate_fn=collate_embedding,
             #num_workers=2
             )
             }    
@@ -66,211 +73,142 @@ class Solver():
             pbar = tqdm_nb()
             pbar.reset(total=len(self.dataloader['train']))
 
-            if cfg.EMBEDDING_SHAPE_ENCODER:
                 
-                train_log = {
+            train_log = {
                     'total_loss': [],
-                    'walker_loss_tst': [],
-                    'walker_loss_sts': [],
-                    'visit_loss_ts': [],
-                    'visit_loss_st': [],
-                    'metric_loss_st': [],
-                    'metric_loss_tt': [],
-                    'shape_norm_penalty': [],
+                    'metric_loss': [],
                     'text_norm_penalty': [],
+                    'separator_loss': []
+
                     }
-                val_log = {
+            val_log = {
                     'total_loss': [],
-                    'walker_loss_tst': [],
-                    'walker_loss_sts': [],
-                    'visit_loss_ts': [],
-                    'visit_loss_st': [],
-                    'metric_loss_st': [],
-                    'metric_loss_tt': [],
-                    'shape_norm_penalty': [],
-                    'text_norm_penalty': []
-                    }
-                
-                self.shape_encoder.train()
-            
-            else:
-                train_log = {
-                    'total_loss': [],
-                    'metric_loss_tt': [],
+                    'metric_loss': [],
                     'text_norm_penalty': [],
-                    }
-                val_log = {
-                    'total_loss': [],
-                    'metric_loss_tt': [],
-                    'text_norm_penalty': [],
+                    'separator_loss': []
                     }
 
+            
             self.text_encoder.train()
-            #iter=0
             if self.mode=='online':
                 self.dynamicBatchConstruction()
-            for i,(_,labels,texts , _, shapes) in enumerate(self.dataloader['train']):
+            
+            epochLoss=[]
+            for i,(_,main_cat,labels,texts) in enumerate(self.dataloader['train']):
                 pbar.update()
-                losses = self.forward(shapes, texts, labels)
+                
+                losses = self.forward(texts, labels,main_cat)
 
-                if cfg.EMBEDDING_SHAPE_ENCODER:
+                train_log['total_loss'].append(losses['total_loss'].item())                   
+                train_log['metric_loss'].append(losses['metric_loss'].item())
+                train_log['separator_loss'].append(losses['separator_loss'].item())
 
-                    train_log['total_loss'].append(losses['total_loss'].item())
-                    train_log['walker_loss_tst'].append(losses['walker_loss_tst'].item())
-                    train_log['walker_loss_sts'].append(losses['walker_loss_sts'].item())
-                    train_log['visit_loss_ts'].append(losses['visit_loss_ts'].item())
-                    train_log['visit_loss_st'].append(losses['visit_loss_st'].item())
-                    train_log['metric_loss_st'].append(losses['metric_loss_st'].item())
-                    train_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
-                    train_log['shape_norm_penalty'].append(losses['shape_norm_penalty'].item())
-                    train_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
-                else:
-                    train_log['total_loss'].append(losses['total_loss'].item())                   
-                    train_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
-                    train_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
 
+                train_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
+
+                epochLoss.append(losses['total_loss'].item())
                 # back prop
                 self.optimizer.zero_grad()
 
                 losses['total_loss'].backward()
 
-                clip_grad_value_(list(self.shape_encoder.parameters()) + list(self.text_encoder.parameters()), cfg.EMBEDDING_GRADIENT_CLIPPING)
+                clip_grad_value_(self.text_encoder.parameters(), cfg.EMBEDDING_GRADIENT_CLIPPING)
 
                 self.optimizer.step()
 
-                #if iter % 100==0:
-                #    print(losses['total_loss'].item())
-
-                #iter+=1
 
                 desc = 'Training: [%d/%d][%d/%d], Total loss: %.4f' \
                     % (epoch_id+1, epoch, i+1, len(self.dataloader['train']), losses['total_loss'].item())
                 pbar.set_description(desc)
                 
+            print('Total epoch loss: %.4f' % np.mean(epochLoss))
             # validate
-            val_log = self.validate(val_log)
+            if epoch_id % 5==0 and epoch_id!=0:
+                val_log = self.validate(val_log)
             
 
-            self._epoch_report(train_log, val_log, epoch_id, epoch)
+                self._epoch_report(train_log, val_log, epoch_id, epoch)
             
-
             
-            # evaluate
-            metrics_t2t = self.evaluate(self.shape_encoder, self.text_encoder, idx_word)
-            # Check if we should terminate training
-            cur_eval_acc = metrics_t2t.precision[4]  # Precision @ 5
-            if all(self.eval_acc > cur_eval_acc):
-                #terminate training
-                print('Best checkpoint:', self.val_ckpts[np.argmax(self.eval_acc)])
-                return 
-            else:  # Update val acc list
-                if max(self.eval_acc)<cur_eval_acc:
-                    print("saving models...\n")
+                # evaluate
+                metrics_t2t = self.evaluate(self.text_encoder, idx_word)
+                # Check if we should terminate training
+                cur_eval_acc = metrics_t2t.precision[4]  # Precision @ 5
+                if all(self.eval_acc > cur_eval_acc):
+                    #terminate training
+                    print('Best checkpoint:', self.val_ckpts[np.argmax(self.eval_acc)])
+                    return 
+                else:  # Update val acc list
+                    if max(self.eval_acc)<cur_eval_acc:
+                        print("saving models...\n")
 
-                    torch.save(self.shape_encoder.state_dict(), os.path.join(cfg.EMBEDDING_SAVE_PATH, "shape_encoder.pth"))
-                    torch.save(self.text_encoder.state_dict(), os.path.join(cfg.EMBEDDING_SAVE_PATH,"text_encoder.pth"))
+                        torch.save(self.text_encoder.state_dict(), os.path.join(cfg.EMBEDDING_TEXT_MODELS_PATH,"text_encoder.pth"))
 
-                self.eval_acc = np.roll(self.eval_acc, 1)
-                self.eval_acc[0] = cur_eval_acc
-                self.eval_ckpts = np.roll(self.eval_ckpts, 1)
-                self.eval_ckpts[0] = epoch_id + 1
-
-
+                    self.eval_acc = np.roll(self.eval_acc, 1)
+                    self.eval_acc[0] = cur_eval_acc
+                    self.eval_ckpts = np.roll(self.eval_ckpts, 1)
+                    self.eval_ckpts[0] = epoch_id + 1
 
 
             scheduler.step()
 
-    def forward(self, shapes, texts, labels):
+    def forward(self,texts, labels,main_cat):
 
-        batch_size = texts.size(0)
         texts = texts.to(self.device)
         text_labels = labels.to(self.device)
-        s=None
-        shape_labels=None
-        if cfg.EMBEDDING_SHAPE_ENCODER:
-            shapes = shapes.to(self.device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
-            shape_labels = labels.to(self.device).index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
-            s = self.shape_encoder(shapes)
-        
+        main_cat=main_cat.to(self.device)
+
         t = self.text_encoder(texts)
 
-        losses = self.compute_loss(s, t, shape_labels, text_labels)
+        
+        losses = self.compute_loss(t, text_labels,main_cat)
 
         return losses
 
 
-    def compute_loss(self,s, t, s_labels, t_labels):
-
-        batch_size = t.size(0)
-        if cfg.EMBEDDING_SHAPE_ENCODER:
-            equality_matrix = t_labels.reshape(-1,1).eq(t_labels).float()
-            p_target = (equality_matrix / equality_matrix.sum(1))
-        
-
-            walker_loss_tst = self.criterion['walker'](t, s, p_target)
-            visit_loss_ts = self.criterion['visit'](t, s)
-
-
-            equality_matrix_s = s_labels.reshape(-1,1).eq(s_labels).float()
-            p_target_s = (equality_matrix_s / equality_matrix_s.sum(1))
-
-
-            walker_loss_sts = self.criterion['walker'](s, t, p_target_s)
-            visit_loss_st = self.criterion['visit'](s, t)
+    def compute_loss(self, t, t_labels,main_cat):
 
         
-        metric_loss_tt = self.criterion['metric'](t,t_labels)
+        n_pair = self.criterion['metric_main'](t,t_labels)
         
-        if cfg.EMBEDDING_SHAPE_ENCODER:
-            s_mask = torch.BoolTensor([[1], [0]]).repeat(batch_size // 2, cfg.EMBEDDING_DIM).to(self.device)
-            t_mask = torch.BoolTensor([[0], [1]]).repeat(batch_size // 2, cfg.EMBEDDING_DIM).to(self.device)
-            selected_s = s
-            selected_t = t.index_select(0, torch.LongTensor([i * 2 for i in range(batch_size // 2)]).to(self.device))
-            masked_s = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(s_mask, selected_s)
-            masked_t = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(t_mask, selected_t)
-            embedding = masked_s + masked_t
-
-            metric_loss_st = self.criterion['metric'](embedding)
-                        
-            flipped_t = t.index_select(0, torch.LongTensor([i * 2 + 1 for i in range(batch_size // 2)]).to(self.device))
-            flipped_masked_t = torch.zeros(batch_size, cfg.EMBEDDING_DIM).to(self.device).masked_scatter_(t_mask, flipped_t)
-            embedding = masked_s + flipped_masked_t
-            metric_loss_st += self.criterion['metric'](embedding)
-        
-
-        if cfg.EMBEDDING_SHAPE_ENCODER:
-            shape_norm_penalty = self._norm_penalty(s)
-
         text_norm_penalty = self._norm_penalty(t)
+        tripletBatch=self.construct_tripletLoss(t,main_cat) #to dla dzielenia przy uyciu triple
 
-        if cfg.EMBEDDING_SHAPE_ENCODER:
-            loss = cfg.WALKER_WEIGHT*(walker_loss_tst + walker_loss_sts) + cfg.VISIT_WEIGHT*(visit_loss_ts + visit_loss_st)
-            loss +=  cfg.METRIC_WEIGHT*(metric_loss_st + metric_loss_tt)
-            loss += (cfg.SHAPE_NORM_MULTIPLIER* shape_norm_penalty + cfg.TEXT_NORM_MULTIPLIER * text_norm_penalty)
-        else:
-            loss =  cfg.METRIC_WEIGHT*metric_loss_tt
-            loss += cfg.TEXT_NORM_MULTIPLIER * text_norm_penalty
+        metric_loss_triplet=self.criterion['metric_separator'](tripletBatch,main_cat)
 
-        if cfg.EMBEDDING_SHAPE_ENCODER:
-            losses = {
+
+        loss =  cfg.METRIC_WEIGHT*n_pair
+        loss += cfg.TEXT_NORM_MULTIPLIER * text_norm_penalty
+        loss+=cfg.TRIPLET_MULTIPLIER*metric_loss_triplet
+
+        losses = {
                 'total_loss': loss,
-                'walker_loss_tst': walker_loss_tst*cfg.WALKER_WEIGHT,
-                'walker_loss_sts': walker_loss_sts*cfg.WALKER_WEIGHT,
-                'visit_loss_ts': visit_loss_ts*cfg.VISIT_WEIGHT,
-                'visit_loss_st': visit_loss_st*cfg.VISIT_WEIGHT,
-                'metric_loss_st': metric_loss_st*cfg.METRIC_WEIGHT,
-                'metric_loss_tt': metric_loss_tt*cfg.METRIC_WEIGHT,
-                'shape_norm_penalty': shape_norm_penalty*cfg.SHAPE_NORM_MULTIPLIER,
+                'metric_loss': n_pair*cfg.METRIC_WEIGHT,
+                'separator_loss': cfg.TRIPLET_MULTIPLIER*metric_loss_triplet,
                 'text_norm_penalty': text_norm_penalty*cfg.TEXT_NORM_MULTIPLIER
                 }
-        else:  
-            losses = {
-                'total_loss': loss,
-                'metric_loss_tt': metric_loss_tt*cfg.METRIC_WEIGHT,
-                'text_norm_penalty': text_norm_penalty*cfg.TEXT_NORM_MULTIPLIER
-                }
+                
 
         return losses
+    
+    def construct_tripletLoss(self,t,main_cat):
+        unique_elements = torch.unique(main_cat)
+
+        indices = [torch.where(main_cat == element)[0] for element in unique_elements]
+        min_len=min(len(indices[0]), len(indices[1]))
+
+        cat_indices=[]
+        min_len=(min_len//2)*2
+        for i in range(0,min_len,2):
+            one_a=indices[0][i]
+            one_b=indices[0][i+1]
+
+            two_a=indices[1][i]
+            two_b=indices[1][i+1]
+            cat_indices.extend([t[one_a],t[one_b],t[two_a],t[two_b]])
+
+        return torch.stack(cat_indices)
+
 
     def _norm_penalty(self,embedding):
         norm = torch.norm(embedding, p=2, dim=1)
@@ -280,37 +218,24 @@ class Solver():
 
     def validate(self, val_log):
         print("Validating...\n")
-        if cfg.EMBEDDING_SHAPE_ENCODER:
-            self.shape_encoder.eval()
+
         self.text_encoder.eval()
 
         pbar = tqdm_nb()
         pbar.reset(total=len(self.dataloader['val']))
 
-        for i,(_,labels,texts , _, shapes) in enumerate(self.dataloader['val']):
+        for i,(_,main_cat,labels,texts) in enumerate(self.dataloader['val']):
             pbar.update()
 
             with torch.no_grad():
-                losses = self.forward(shapes, texts, labels)
+                losses = self.forward(texts, labels,main_cat)
 
-            #print(losses['total_loss'].item())
             # record
-            if cfg.EMBEDDING_SHAPE_ENCODER:
 
-                val_log['total_loss'].append(losses['total_loss'].item())
-                val_log['walker_loss_tst'].append(losses['walker_loss_tst'].item())
-                val_log['walker_loss_sts'].append(losses['walker_loss_sts'].item())
-                val_log['visit_loss_ts'].append(losses['visit_loss_ts'].item())
-                val_log['visit_loss_st'].append(losses['visit_loss_st'].item())
-                val_log['metric_loss_st'].append(losses['metric_loss_st'].item())
-                val_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
-                val_log['shape_norm_penalty'].append(losses['shape_norm_penalty'].item())
-            
-                val_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
-            else:
-                val_log['total_loss'].append(losses['total_loss'].item())
-                val_log['metric_loss_tt'].append(losses['metric_loss_tt'].item())
-                #val_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
+            val_log['total_loss'].append(losses['total_loss'].item())
+            val_log['metric_loss'].append(losses['metric_loss'].item())
+            val_log['separator_loss'].append(losses['separator_loss'].item())
+            val_log['text_norm_penalty'].append(losses['text_norm_penalty'].item())
 
             desc = 'Validating: [%d/%d], Total loss: %.4f' \
                     % (i+1, len(self.dataloader['val']), losses['total_loss'].item())
@@ -319,104 +244,63 @@ class Solver():
 
         return val_log
     
-    def evaluate(self,shape_encoder, text_encoder,idx_word):
-        if cfg.EMBEDDING_SHAPE_ENCODER:
-            shape_encoder.eval()
+    def evaluate(self,text_encoder,idx_word):
+
         text_encoder.eval()
 
         print("Evaluating...")
         embedding = self.build_embeedings_for_eval(idx_word,'test')
 
-        metrics = compute_metrics(embedding, mode='t2t', metric='cosine')
+        metrics = compute_metrics(embedding)
         return metrics
 
     def build_embeedings_for_eval(self,idx_word,phase):
         data = {}
         pbar = tqdm_nb()
         pbar.reset(total=len(self.dataloader[phase]))
-
-        for j,(model_id,_,texts , _, shapes) in enumerate(self.dataloader[phase]):
+        self.text_encoder=self.text_encoder.to('cpu')
+        for j,(model_id,_,_,texts) in enumerate(self.dataloader[phase]):
             pbar.update()
-            shape_embedding=[None for _ in range(len(model_id))]
-            if cfg.EMBEDDING_SHAPE_ENCODER:
-                shapes = shapes.to(self.device)
-                shape_embedding = self.shape_encoder(shapes)
-            texts = texts.to(self.device)
+
+            texts = texts.to('cpu')
            
             text_embedding = self.text_encoder(texts)
             for i,elem in enumerate(model_id):    
 
                 caption=" ".join([idx_word[item.item()] for item in texts[i] if item.item()!=0])   
                 if elem in data.keys():
-                    data[elem]['text_embedding'].append((caption,text_embedding[i])) 
+                    data[elem]['text_embedding'].append((caption,text_embedding[i]))
                 else:
                     data[elem] = {
-                        'shape_embedding': shape_embedding[i],
                         'text_embedding': [(caption,text_embedding[i])]
                     }
             desc = 'Evaluating: [%d/%d]' \
                     % (j+1, len(self.dataloader[phase]))
             pbar.set_description(desc)
+        self.text_encoder=self.text_encoder.to(cfg.DEVICE)
         return data
 
 
     def _epoch_report(self,train_log, val_log, epoch_id, epoch):
         # show report
-        if cfg.EMBEDDING_SHAPE_ENCODER:
-
-            print("epoch [{}/{}] done...".format(epoch_id+1, epoch))
-            print("------------------------summary------------------------")
-            print("[train] total_loss: %f" % (
-                np.mean(train_log['total_loss'])
-            ))
-            print("[val]   total_loss: %f" % (
-                np.mean(val_log['total_loss'])
-            ))
-
-            print("[train] walker_loss_tst: %f, walker_loss_sts: %f" % (
-                np.mean(train_log['walker_loss_tst']),
-                np.mean(train_log['walker_loss_sts'])
-            ))
-            print("[val]   walker_loss_tst: %f, walker_loss_sts: %f" % (
-                np.mean(val_log['walker_loss_tst']),
-                np.mean(val_log['walker_loss_sts'])
-            ))
-            print("[train] visit_loss_ts: %f, visit_loss_st: %f" % (
-                np.mean(train_log['visit_loss_ts']),
-                np.mean(train_log['visit_loss_st'])
-            ))
-            print("[val]   visit_loss_ts: %f, visit_loss_st: %f" % (
-                np.mean(val_log['visit_loss_ts']),
-                np.mean(val_log['visit_loss_st'])
-            ))
-            print("[train] metric_loss_st: %f, metric_loss_tt: %f" % (
-                np.mean(train_log['metric_loss_st']),
-                np.mean(train_log['metric_loss_tt'])
-            ))
-            print("[val]   metric_loss_st: %f, metric_loss_tt: %f" % (
-                np.mean(val_log['metric_loss_st']),
-                np.mean(val_log['metric_loss_tt'])
-            ))
-            print("[train] shape_norm_penalty: %f, text_norm_penalty: %f" % (
-                np.mean(train_log['shape_norm_penalty']),
-                np.mean(train_log['text_norm_penalty'])
-            ))
-            print("[val]   shape_norm_penalty: %f, text_norm_penalty: %f\n" % (
-                np.mean(val_log['shape_norm_penalty']),
-                np.mean(val_log['text_norm_penalty'])
-            ))
-        else:
-            print("epoch [{}/{}] done...".format(epoch_id+1, epoch))
-            print("------------------------summary------------------------")
-            print("[train] total_loss: %f" % (
-                np.mean(train_log['total_loss'])
-            ))
-            print("[val]   total_loss: %f" % (
-                np.mean(val_log['total_loss'])
-            ))
-            print("[train] metric_loss_tt: %f" % (
-                np.mean(train_log['metric_loss_tt'])
-            ))
-            print("[val]  metric_loss_tt: %f" % (
-                np.mean(val_log['metric_loss_tt'])
-            ))
+        
+        print("epoch [{}/{}] done...".format(epoch_id+1, epoch))
+        print("------------------------summary------------------------")
+        print("[train] total_loss: %f \n train_min_loss: %f \n train_max_loss: %f" % (
+                np.mean(train_log['total_loss']),np.min(train_log['total_loss']),np.max(train_log['total_loss'])
+        ))
+        print("[val]   total_loss: %f \n val_min_loss: %f \n train_max_loss: %f" % (
+            np.mean(val_log['total_loss']),np.min(val_log['total_loss']),np.max(train_log['total_loss'])
+        ))
+        print("[train] metric_loss: %f" % (
+            np.mean(train_log['metric_loss'])
+        ))
+        print("[train] separator_loss: %f" % (
+            np.mean(train_log['separator_loss'])
+        ))
+        print("[val]  metric_loss: %f" % (
+            np.mean(val_log['metric_loss'])
+        ))
+        print("[val] separator_loss: %f" % (
+            np.mean(val_log['separator_loss'])
+        ))

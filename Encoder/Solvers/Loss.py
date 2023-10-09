@@ -1,109 +1,87 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 from config import cfg
+from sklearn.metrics.pairwise import cosine_similarity
+import torch.nn.functional as F
 
-
-class RoundTripLoss(nn.Module):
-    def __init__(self,device='cpu'):
-        super(RoundTripLoss, self).__init__()
-
-        self.device=device
-    def forward(self, T, S, targets):
-        
-        # similarity matrix
-        M= T.matmul(S.transpose(1, 0).contiguous())
-
-        #probability
-        T2S = F.softmax(M, dim=1)
-        S2T = F.softmax(M.transpose(1, 0), dim=1)
-
-        # build inputs
-        p_TST = T2S.matmul(S2T)
-
-              
-        return nn.CrossEntropyLoss()(cfg.EPS+p_TST, targets) 
-    
-
-class AssociationLoss(nn.Module):
-    def __init__(self ,device='cpu'):
-        super(AssociationLoss, self).__init__()
-        self.device=device
-    def forward(self, T, S):
-        # similarity matrix
-        M = T.matmul(S.transpose(1, 0).contiguous())
-
-        #probability
-        T2S = F.softmax(M, dim=1)
-
-        visit_probability  = T2S.mean(0, keepdim=True)
-        S_size=T2S.shape[1]
-
-        # build targets
-        targets = torch.full((1,S_size),1./float(S_size)).to(self.device)
-
-        return nn.CrossEntropyLoss()(cfg.EPS + visit_probability,targets) 
 
 class InstanceMetricLoss(nn.Module):
-    def __init__(self, margin=1.):
+    def __init__(self,device='cpu'):
         super(InstanceMetricLoss, self).__init__()
-        self.margin = margin
-    
-    def _get_distance(self, inputs):
-
-        D = inputs.matmul(inputs.transpose(1, 0))
-
-        D /= 128.
-
-        Dexpm = torch.exp(self.margin + D)
-
-
-        return D, Dexpm
-        
+        self.margin = cfg.METRIC_MARGIN
+        self.device=device
 
     def forward(self, inputs,t):
-
+        
         batch_size = inputs.size(0)
         
-        # get distance
-        D, Dexpm = self._get_distance(inputs)
+        Xe = torch.unsqueeze(inputs, 1)
+        D = torch.sum(Xe * Xe.permute(1, 0, 2), dim=2)
+        D /= 128.0
+        
+        expmD = torch.exp(self.margin + D)
+        
+        J_all = []
 
-        # compute pair-wise loss
+        for pair_ind in range(batch_size // 2):
+            i = pair_ind * 2
+            j = i + 1
+            ind_rest = np.hstack([np.arange(0, pair_ind * 2),
+                          np.arange(pair_ind * 2 + 2, batch_size)])
+
+            inds = np.array([[i, k] for k in ind_rest] + [[j, l] for l in ind_rest])
+            J_ij = torch.log(torch.sum(expmD[inds[:, 0], inds[:, 1]])) - D[i, j]
+
+            J_all.append(J_ij)
+
+        # Convert J_all to a PyTorch tensor
+        J_all = torch.stack(J_all)
+
+        # Compute the loss
+        loss = torch.div(torch.mean(torch.square(torch.clamp(J_all, 0.0))), 2.0)
+        """
+        D = inputs.matmul(inputs.transpose(1, 0))
+        D /= 128.0
+        expmD = torch.exp(self.margin + D)
+
         global_comp = [0.] * (batch_size // 2)
         for pos_id in range(batch_size // 2):
             pos_i = pos_id * 2
-            pos_j = pos_i + 1
+            pos_j = pos_id * 2 + 1
             pos_pair = (pos_i, pos_j)
 
             neg_i = [pos_i * batch_size + k * 2 + 1 for k in range(batch_size // 2) if k != pos_j]
             neg_j = [pos_j * batch_size + l * 2 for l in range(batch_size // 2) if l != pos_i]
 
-            neg_ik = Dexpm.take(torch.LongTensor(neg_i)).sum()
-            neg_jl = Dexpm.take(torch.LongTensor(neg_j)).sum()
+
+            neg_ik = expmD.take(torch.LongTensor(neg_i).to(self.device)).sum()
+            neg_jl = expmD.take(torch.LongTensor(neg_j).to(self.device)).sum()
             Dissim = neg_ik + neg_jl
 
 
-            J_ij = torch.log(1e-8 + Dissim) - D[pos_pair]
+            J_ij = torch.log(1e-8 + Dissim).to(self.device) - D[pos_pair]
 
 
-            max_ij = torch.max(J_ij, torch.zeros(J_ij.size())).pow(2)            
+            max_ij = torch.max(J_ij, torch.zeros(J_ij.size()).to(self.device)).pow(2)            
             global_comp[pos_id] = max_ij.unsqueeze(0)
         
         # accumulate
-        outputs = torch.cat(global_comp).sum().div(batch_size)
-
-        return outputs
+        loss = torch.cat(global_comp).sum().div(batch_size)
+        """
+        return loss
     
 
+
+
 class TripletLoss(nn.Module):
-    def __init__(self, margin=1.,device='cpu'):
+    def __init__(self,device='cpu'):
         super(TripletLoss, self).__init__()
-        self.margin = margin
+        self.margin = cfg.METRIC_MARGIN_TRIPLET
         self.device=device
         
     def calc_euclidean(self, x1, x2):
-        return (x1 - x2).pow(2).sum(1)
+        return (x1 - x2+cfg.EPS).pow(2).sum(1).sqrt()
     
     def forward(self, inputs,t_labels):
 
@@ -117,15 +95,30 @@ class TripletLoss(nn.Module):
         positive = inputs[positive_idx]
         negative = inputs[negative_idx]
 
-
-        
         distance_positive = self.calc_euclidean(anchor, positive)
         distance_negative = self.calc_euclidean(anchor, negative)
+        losses = torch.relu(distance_positive - distance_negative + self.margin).sum(0)
 
-        losses = torch.relu(distance_positive - distance_negative + self.margin)
+        return losses/batch_size
+    
+class customSimilarityLoss(nn.Module):
+    def __init__(self,device='cpu'):
+        super(customSimilarityLoss, self).__init__()
 
-        return losses.mean()
+    def forward(self, embeddings,t_labels):
 
+        cosine_sim_matrix = torch.from_numpy(cosine_similarity(embeddings.detach().numpy(), embeddings.detach().numpy())).float()
+        normalized_cosine_sim_matrix = (cosine_sim_matrix + 1) / 2
+        binary_labels=t_labels.unsqueeze(1)*t_labels.unsqueeze(0)
+        normalized_cosine_sim_matrix = normalized_cosine_sim_matrix.view(-1)
+        print(torch.max(normalized_cosine_sim_matrix))
+        print(torch.min(normalized_cosine_sim_matrix))
+        binary_labels_flat = binary_labels.view(-1).float()
+        print(torch.min(binary_labels_flat))
+        print(torch.max(binary_labels_flat))
+        bce_loss = F.binary_cross_entropy(normalized_cosine_sim_matrix, binary_labels_flat)
+
+        return bce_loss
 
 class NPairLoss(nn.Module):
     """
@@ -142,16 +135,12 @@ class NPairLoss(nn.Module):
     def forward(self, embeddings,t_labels):
         #labels=[]
 
-        #[labels.extend([i,i]) for i in range(embeddings.shape[0]//2)]
-        #labels=np.array(labels)
-
         n_pairs, n_negatives = self.get_n_pairs(t_labels)
         anchors = embeddings[n_pairs[:, 0]]    # (n, embedding_size)
         positives = embeddings[n_pairs[:,1]]  # (n, embedding_size)
         negatives = embeddings[n_negatives]    # (n, n-1, embedding_size)
 
-        losses = self.n_pair_loss(anchors, positives, negatives) #+ self.l2_reg * self.l2_loss(anchors, positives)
-
+        losses = self.n_pair_loss(anchors, positives, negatives) + self.l2_reg * self.l2_loss(anchors, positives)
         return losses
 
     def get_n_pairs(self,labels):
@@ -165,12 +154,7 @@ class NPairLoss(nn.Module):
         batch_size=labels.size(0)
         anchor_idx=[k*2 for k in range(batch_size // 2)]
         positive_idx=[k*2+1 for k in range(batch_size // 2)]
-        #n_pairs = []
-        #for label in set(labels):
-        #    label_mask = (labels == label)
-        #    label_indices = np.where(label_mask)[0]
-        #    if len(label_indices) < 2:
-        #       continue
+
         for i in range(len(anchor_idx)):
             n_pairs.append([anchor_idx[i], positive_idx[i]])
     
@@ -179,10 +163,11 @@ class NPairLoss(nn.Module):
 
         n_negatives = []
         for i in range(len(n_pairs)):
-            negative = np.append(n_pairs[:i,1], n_pairs[i+1:,1])
+            negative = np.concatenate([n_pairs[:i,1], n_pairs[i+1:,1]])
             n_negatives.append(negative)
 
         n_negatives = np.array(n_negatives)
+        
         
 
         return torch.LongTensor(n_pairs).to(self.device), torch.LongTensor(n_negatives).to(self.device)
@@ -195,9 +180,14 @@ class NPairLoss(nn.Module):
         :param negatives: A torch.Tensor, (n, n-1, embedding_size)
         :return: A scalar
         """
-        #anchors = torch.unsqueeze(anchors, dim=1)  # (n, 1, embedding_size)
-        #positives = torch.unsqueeze(positives, dim=1)  # (n, 1, embedding_size)
-        
+        anchors = torch.unsqueeze(anchors, dim=1)  
+        positives = torch.unsqueeze(positives, dim=1)  
+
+        x = torch.matmul(anchors, (negatives - positives).transpose(1, 2)) 
+        x = torch.sum(torch.exp(x), 2) 
+        loss = torch.mean(torch.log(1+x))
+        return loss
+        """
         pos_sum=(anchors @ positives.transpose(0,1)).diagonal()
         transposed_negatives = negatives.transpose(1, 2)
 
@@ -209,9 +199,9 @@ class NPairLoss(nn.Module):
 
 
         x = torch.sum(torch.exp(result), 1)
-        print(torch.log(1+x))
         loss = torch.mean(torch.log(1+x))
         return loss
+        """
 
     def l2_loss(self,anchors, positives):
         """

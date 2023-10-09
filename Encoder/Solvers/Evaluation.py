@@ -20,36 +20,22 @@ from numpy.linalg import norm
 
 
 
-def construct_embeddings_matrix(embedding, mode):
+def construct_embeddings_matrix(embedding):
     """Construct the embeddings matrix, which is NxD where N is the number of embeddings and D is
     the dimensionality of each embedding.
-
-    Args:
-        dataset: String specifying the dataset
-        embedding: Dictionary containing the embeddings. 
-            form: emb = {
-                'e702f89ce87a0b6579368d1198f406e7': {
-                    'shape_embedding': shape_emb,
-                    'text_embedding': [text_emb_1, text_emb_2, ...]
-                }
-                ...
-            }
     """
-    
+
     num_sample = len(embedding)
-    num_shape = num_sample
     num_text = np.sum([1 for key in embedding.keys() for _ in embedding[key]['text_embedding']])
     embedding_dim = embedding[list(embedding.keys())[0]]['text_embedding'][0][1].shape[0]
 
     # Print info about embeddings
-    print('\nNumber of embedding:', num_text+num_sample)
-    print('Number of shape embeddings: {}, number of text embeddings: {}'.format(num_shape, num_text))
+    print('\nNumber of modelId:', num_sample)
+    print('Number of text embeddings: {}'.format(num_text))
     print('Dimensionality of embedding:', embedding_dim)
-    print('Evaluation mode:', mode)
     print()
 
     # extract embedding
-    #shape_embedding = [(key, embedding[key]['shape_embedding']) for key in embedding.keys()]
     text_embedding = [(key, item) for key in embedding.keys() for item in embedding[key]['text_embedding']]
 
     num_embedding=len(text_embedding)
@@ -90,9 +76,9 @@ def print_model_id_info(model_id_to_label):
 
 
 def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_matrix,
-                                      n_neighbors, fit_eq_query, range_start=0):
-    if fit_eq_query is True:
-        n_neighbors += 1
+                                      n_neighbors, range_start=0):
+        
+    n_neighbors += 1
 
 
     # Argpartition method
@@ -105,27 +91,27 @@ def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_ma
     indices = indices[row_indices, np.argsort(yo, axis=1).flatten()].reshape(n_samples, n_neighbors)
     indices = np.flip(indices, 1)
 
-    if fit_eq_query is True:
-        n_neighbors -= 1  # Undo the neighbor increment
-        final_indices = np.zeros((indices.shape[0], n_neighbors), dtype=int)
-        compare_mat = np.asarray(list(range(range_start, range_start + indices.shape[0]))).reshape(indices.shape[0], 1)
-        has_self = np.equal(compare_mat, indices)  # has self as nearest neighbor
-        any_result = np.any(has_self, axis=1)
-        for row_idx in range(indices.shape[0]):
-            if any_result[row_idx]:
-                nonzero_idx = np.nonzero(has_self[row_idx, :])
-                assert len(nonzero_idx) == 1
-                new_row = np.delete(indices[row_idx, :], nonzero_idx[0])
-                final_indices[row_idx, :] = new_row
-            else:
-                final_indices[row_idx, :] = indices[row_idx, :n_neighbors]
-        indices = final_indices
+    n_neighbors -= 1  # Undo the neighbor increment
+    final_indices = np.zeros((indices.shape[0], n_neighbors), dtype=int)
+    compare_mat = np.asarray(list(range(range_start, range_start + indices.shape[0]))).reshape(indices.shape[0], 1)
+    has_self = np.equal(compare_mat, indices)  # has self as nearest neighbor
+    any_result = np.any(has_self, axis=1)
+    for row_idx in range(indices.shape[0]):
+        if any_result[row_idx]:
+            nonzero_idx = np.nonzero(has_self[row_idx, :])
+            assert len(nonzero_idx) == 1
+            new_row = np.delete(indices[row_idx, :], nonzero_idx[0])
+            final_indices[row_idx, :] = new_row
+        else:
+            final_indices[row_idx, :] = indices[row_idx, :n_neighbors]
+    indices = final_indices
     return indices
 
 
 def compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_matrix,
-                                     n_neighbors, fit_eq_query):
-    print('Using unnormalized cosine distance')
+                                     n_neighbors):
+    
+    #print('Using unnormalized cosine distance')
     n_samples = query_embeddings_matrix.shape[0]
     if n_samples > 8000:  # Divide into blocks and execute
         def block_generator(mat, block_size):
@@ -136,9 +122,9 @@ def compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_mat
         blocks = block_generator(query_embeddings_matrix, block_size)
         indices_list = []
         for cur_block_idx, block in enumerate(blocks):
-            print('Nearest neighbors on block {}'.format(cur_block_idx + 1))
+            #print('Nearest neighbors on block {}'.format(cur_block_idx + 1))
             cur_indices = _compute_nearest_neighbors_cosine(fit_embeddings_matrix, block,
-                                                            n_neighbors, fit_eq_query,
+                                                            n_neighbors,
                                                             range_start=cur_block_idx * block_size)
             indices_list.append(cur_indices)
         indices = np.vstack(indices_list)
@@ -146,40 +132,11 @@ def compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_mat
     else:
         return None, _compute_nearest_neighbors_cosine(fit_embeddings_matrix,
                                                        query_embeddings_matrix, n_neighbors,
-                                                       fit_eq_query)
-
-
-def compute_nearest_neighbors(fit_embeddings_matrix, query_embeddings_matrix,
-                              n_neighbors, metric='minkowski'):
-    """Compute nearest neighbors.
-
-    Args:
-        fit_embeddings_matrix: NxD matrix
-    """
-    fit_eq_query = False
-    if ((fit_embeddings_matrix.shape == query_embeddings_matrix.shape)
-        and np.allclose(fit_embeddings_matrix, query_embeddings_matrix)):
-        fit_eq_query = True
-
-    if metric == 'cosine':
-        distances, indices = compute_nearest_neighbors_cosine(fit_embeddings_matrix,
-                                                              query_embeddings_matrix,
-                                                              n_neighbors, fit_eq_query)
-    else:
-        raise ValueError('Use cosine distance.')
-    return distances, indices
+                                                       )
 
 
 def compute_pr_at_k(indices, labels, n_neighbors, num_embeddings, fit_labels=None):
-    """Compute precision and recall at k (for k=1 to n_neighbors)
 
-    Args:
-        indices: num_embeddings x n_neighbors array with ith entry holding nearest neighbors of
-                 query i
-        labels: 1-d array with correct class of query
-        n_neighbors: number of neighbors to consider
-        num_embeddings: number of queries
-    """
     if fit_labels is None:
         fit_labels = labels
     num_correct = np.zeros((num_embeddings, n_neighbors))
@@ -217,47 +174,11 @@ def compute_pr_at_k(indices, labels, n_neighbors, num_embeddings, fit_labels=Non
     recall_at_k = np.sum(num_correct/num_relevant[:,None], axis=0) / num_embeddings
     precision_at_k = np.sum(num_correct/np.arange(1,n_neighbors+1), axis=0) / num_embeddings
     #print('recall_at_k shape:', recall_at_k.shape)
-    print('     k: precision recall recall_rate ndcg')
-    for k in range(n_neighbors):
-        print('pr @ {}: {} {} {} {}'.format(k + 1, precision_at_k[k], recall_at_k[k], recall_rate_at_k[k], ave_ndcg_at_k[k]))
+    #print('     k: precision recall recall_rate ndcg')
+    #for k in range(n_neighbors):
+    #    print('pr @ {}: {} {} {} {}'.format(k + 1, precision_at_k[k], recall_at_k[k], recall_rate_at_k[k], ave_ndcg_at_k[k]))
     Metrics = collections.namedtuple('Metrics', 'precision recall recall_rate ndcg')
     return Metrics(precision_at_k, recall_at_k, recall_rate_at_k, ave_ndcg_at_k)
-
-
-def get_nearest_info(indices, labels, label_to_model_id, caption_tuples, idx_to_word):
-    """Compute and return the model IDs of the nearest neighbors.
-    """
-    # Convert labels to model IDs
-    query_model_ids = []
-    query_sentences = []
-    for idx, label in enumerate(labels):
-        query_model_ids.append(caption_tuples[idx][2])
-        cur_sentence_as_word_indices = caption_tuples[idx][0]
-        if cur_sentence_as_word_indices is None:
-            query_sentences.append('None (shape embedding)')
-        else:
-            query_sentences.append('None (text embedding)')
-
-    # Convert neighbors to model IDs
-    nearest_model_ids = []
-    nearest_sentences = []
-    for row in indices:
-        model_ids = []
-        sentences = []
-        for col in row:
-            model_ids.append(caption_tuples[col][2])
-            cur_sentence_as_word_indices = caption_tuples[col][0]
-            if cur_sentence_as_word_indices is None:
-                cur_sentence_as_words = 'None (shape embedding)'
-            else:
-                cur_sentence_as_words = 'None (text embedding)'
-            sentences.append(cur_sentence_as_words)
-        nearest_model_ids.append(model_ids)
-        nearest_sentences.append(sentences)
-    assert len(query_model_ids) == len(nearest_model_ids)
-    return query_model_ids, nearest_model_ids, query_sentences, nearest_sentences
-
-
 
 
 def compute_mean_rec_rank(query_embeddings_matrix, target_embeddings_matrix, labels):
@@ -268,24 +189,23 @@ def compute_mean_rec_rank(query_embeddings_matrix, target_embeddings_matrix, lab
     mean_rec_rank = np.mean(rec_rank)
     print("mean reciprocal rank: {}\n".format(mean_rec_rank))
 
-def compute_metrics(embeddings_dict, mode, metric='minkowski'):
+def compute_metrics(embeddings_dict):
     """Compute all the metrics for the text encoder evaluation.
     """
     (embeddings_matrix, labels, model_id_to_label,
      num_embeddings, label_to_model_id) = construct_embeddings_matrix(
-        embeddings_dict,
-        mode
+        embeddings_dict
     )
     print('min embedding val:', np.amin(embeddings_matrix))
     print('max embedding val:', np.amax(embeddings_matrix))
     print('mean embedding (abs) val:', np.mean(np.absolute(embeddings_matrix)))
-    print_model_id_info(model_id_to_label)
+    #print_model_id_info(model_id_to_label)
 
     n_neighbors = 20
 
-    _, indices = compute_nearest_neighbors(embeddings_matrix, embeddings_matrix, n_neighbors, metric=metric)#target_embeddings_matrix, query_embeddings_matrix, n_neighbors, metric=metric)
+    _, indices = compute_nearest_neighbors_cosine(embeddings_matrix, embeddings_matrix, n_neighbors)
 
-    print('Computing precision recall.')
+    #print('Computing precision recall.')
     pr_at_k = compute_pr_at_k(indices, labels, n_neighbors, num_embeddings)
 
 
