@@ -1,14 +1,17 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from config import cfg
 
 class Generator32(nn.Module):
 
     def __init__(self):
         super(Generator32, self).__init__()
 
+        input_size=128+cfg.GAN_NOISE_SIZE
+        
         self.fc1 = nn.Sequential(
-            nn.Linear(128, 32768),
+            nn.Linear(input_size, 32768),
             nn.BatchNorm1d(32768),
         )
 
@@ -51,9 +54,10 @@ class Generator32(nn.Module):
         # Conv5
         logits = self.conv5(x)
 
-        #sigmoid_output = torch.sigmoid(logits)
+        sigmoid_output = torch.sigmoid(logits)
 
-        return logits
+        return {'sigmoid_output': sigmoid_output, 'logits': logits}
+
 
 class Generator16(nn.Module):
 

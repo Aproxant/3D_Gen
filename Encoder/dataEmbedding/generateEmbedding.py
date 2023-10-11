@@ -2,27 +2,36 @@ from tqdm import tqdm
 import torch
 import pickle
 import os
+from torch.utils.data import DataLoader
 
-def build_embeedings_CWGAN(text_encoder_file,model,loader,save_path,device):
+from dataEmbedding.dataEmbeddingLoader import GenerateDataLoader,check_dataset,collate_embedding
+from config import cfg
+import random
+
+def build_embeedings_CWGAN(text_encoder_file,model,data_dict,vocab_dict,save_path):
 
     model.load_state_dict(torch.load(text_encoder_file))
     
     model.eval()
 
-    for phase in ['train','test','val']:
+    data=[]
+    for i in data_dict.keys():
+        for elem in data_dict[i]:
+            data.append((elem[0],elem[1],elem[2],elem[3]))
 
+    random.shuffle(data)
+    new_dataset=GenerateDataLoader(data,vocab_dict)
+    loader = DataLoader(new_dataset, batch_size=cfg.EMBEDDING_BATCH_SIZE,collate_fn=collate_embedding,shuffle=True,num_workers=4)
 
+    GanData=[]
+    for (model_id,main_cat,labels,texts) in tqdm(loader):
 
-        data=[]
-        for (model_id,_,labels,texts) in tqdm(loader[phase]):
+        texts = texts.to(cfg.DEVICE)
+        text_embedding = model(texts)
+        for i,elem in enumerate(model_id):         
+            GanData.append((elem,labels[i].detach(),text_embedding[i].detach(),texts[i].detach()))
 
-            texts = texts.to(device)
-
-            text_embedding = model(texts)
-            for i,elem in enumerate(model_id):         
-                data.append((elem,labels[i].detach(),text_embedding[i].detach(),texts[i].detach()))
-
-        with open(os.path.join(save_path,phase+'.p'), 'wb') as file:
+        with open(os.path.join(save_path+'.p'), 'wb') as file:
             pickle.dump(data, file)
 
 

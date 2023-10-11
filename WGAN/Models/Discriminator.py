@@ -97,7 +97,7 @@ class Discriminator32(nn.Module):
         embedding_dim = 256
 
         self.emb_out = nn.Sequential(
-            nn.Linear(128, embedding_dim),
+            nn.Linear(128+cfg.GAN_NOISE_SIZE , embedding_dim),
             nn.LeakyReLU(0.2),
             nn.Linear(embedding_dim, embedding_dim),
             nn.LeakyReLU(0.2),
@@ -114,17 +114,11 @@ class Discriminator32(nn.Module):
 
     def forward(self, x,emb):
         x = self.conv1(x)
-        print(x.shape)
         x=self.conv2(x)
-        print(x.shape)
         x=self.conv3(x)
-        print(x.shape)
         x=self.conv4(x)
-        print(x.shape)
         x=self.conv5(x)
-        print(x.shape)
         x = x.view(cfg.GAN_BATCH_SIZE,-1)
-        print(x.shape)
 
         emb=self.emb_out(emb)
         

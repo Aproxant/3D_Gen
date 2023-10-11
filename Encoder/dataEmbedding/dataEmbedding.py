@@ -180,7 +180,6 @@ class Read_Load_BuildBatch():
         half_batch_size = self.batch_size // 2
         if (self.cur + half_batch_size) >= num_data:
             return None
-            #self.shuffle_db_inds(phase)
 
 
 
@@ -308,5 +307,8 @@ class Read_Load_BuildBatch():
     def returnNewEpoch2(self,phase):
         self.aggregate_samples(phase)
         return self.newGenBatch
+    
+
+
             
             
