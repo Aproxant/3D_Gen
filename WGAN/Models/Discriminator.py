@@ -4,44 +4,37 @@ import torch.nn.functional as F
 import copy
 from config import cfg
 
-class Discriminator16(nn.Module):
+
+class Discriminator32_Small(nn.Module):
 
     def __init__(self):
-        super(Discriminator16, self).__init__()
+        super(Discriminator32_Small, self).__init__()
         
 
         self.conv1=nn.Sequential(
-            nn.Conv3d(4,64, kernel_size=4, stride=1,padding='same'),
+            nn.Conv3d(4,64, kernel_size=5, stride=1,padding='same'),
             nn.LeakyReLU(0.2)
         )
         self.conv2=nn.Sequential(
-            nn.Conv3d(64,128 , kernel_size=4, stride=2,padding=3),
+            nn.Conv3d(64,128 , kernel_size=4, stride=2,padding=1),
             nn.LeakyReLU(0.2)
         )
         self.conv3=nn.Sequential(
-            nn.Conv3d(128,256 , kernel_size=4, stride=1,padding='same'),
-            nn.LeakyReLU(0.2)
-        )
-        self.conv4=nn.Sequential(
-            nn.Conv3d(256,512 , kernel_size=4, stride=2,padding=3),
-            nn.LeakyReLU(0.2)
-        )
-        self.conv5=nn.Sequential(
-            nn.Conv3d(512,256 , kernel_size=2, stride=1,padding='same'),
+            nn.Conv3d(128,64, kernel_size=4, stride=2,padding=1),
             nn.LeakyReLU(0.2)
         )
 
         embedding_dim = 256
 
         self.emb_out = nn.Sequential(
-            nn.Linear(128, embedding_dim),
+            nn.Linear(128+cfg.GAN_NOISE_SIZE , embedding_dim),
             nn.LeakyReLU(0.2),
             nn.Linear(embedding_dim, embedding_dim),
             nn.LeakyReLU(0.2),
         )
         
         self.concat=nn.Sequential(
-            nn.Linear(88064, 128),
+            nn.Linear(33024, 128),
             nn.LeakyReLU(0.2),
             nn.Linear(128, 64),
             nn.LeakyReLU(0.2),
@@ -52,10 +45,10 @@ class Discriminator16(nn.Module):
     def forward(self, x,emb):
         x = self.conv1(x)
         x=self.conv2(x)
+
         x=self.conv3(x)
-        x=self.conv4(x)
-        x=self.conv5(x)
-        x = x.view(128,-1)
+
+        x = x.view(cfg.GAN_BATCH_SIZE,-1)
 
         emb=self.emb_out(emb)
         

@@ -30,9 +30,9 @@ class GANLoader(Dataset):
         elem1=self.data[id[0]]
         elem2=self.data[id[1]]
         model_id=elem1[0]
-        label = elem2[1]
-        learned_embedding = elem2[2]
-        raw_caption = elem2[3]
+        #label = elem2[1]
+        learned_embedding = elem2[1]
+        #raw_caption = elem2[3]
 
     
         voxel,_=nrrd.read(os.path.join(self.solid_file,model_id,model_id+'.nrrd'))
@@ -40,11 +40,11 @@ class GANLoader(Dataset):
         voxel /=255.
         if self.phase=='train':
             voxel = augment_voxel_tensor(voxel,max_noise=cfg.GAN_TRAIN_AUGMENT_MAX)
-        
+        learned_embedding=torch.Tensor(learned_embedding)
         learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z()),1).squeeze(0)
 
 
-        return model_id, label, torch.Tensor(learned_embedding), raw_caption , voxel
+        return model_id,learned_embedding,voxel#model_id, label, torch.Tensor(learned_embedding), raw_caption , voxel
     """
     def __getitem__(self, idx):
         model_id = self.embeddings[idx][0]

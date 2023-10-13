@@ -4,7 +4,7 @@ import pickle
 
 class GANDataGenerator():
     def __init__(self):
-        for i in ['val']:
+        for i in ['train','test','val']:
             with open(getattr(cfg,"GAN_{}_SPLIT".format(i.upper())), 'rb') as pickle_file:
                 tmp=pickle.load(pickle_file)
             setattr(self, "data_{}".format(i), tmp)
@@ -68,7 +68,7 @@ class GANDataGenerator():
     
     def shuffle_db_inds(self,num_data):
 
-        self.perms = [np.random.permutation(np.arange(num_data)) for _ in range(3)]
+        self.perms = [np.random.permutation(np.arange(num_data)) for _ in range(4)]
 
         self.cur = 0
 
@@ -87,7 +87,19 @@ class GANDataGenerator():
 
         self.newGenBatch={'fake/mat': [],
                            'real/mat':[],
-                           'real/mis':[]}
+                           'real/mis':[],
+                           'fake/mat_GP':[]}
+        
+        if phase!='train':
+            self.newGenBatch=[]
+            while self.cur < num_data:
+                db_inds = self.get_next_minibatch(num_data)
+                if db_inds is None:
+                    return
+                (fake_match1,fake_match2) = self.get_match_batch(db_inds[0],phase)
+
+                self.newGenBatch.extend(list(zip(fake_match1,fake_match2)))
+
         while self.cur < num_data:
             db_inds = self.get_next_minibatch(num_data)
             if db_inds is None:
@@ -108,6 +120,9 @@ class GANDataGenerator():
             # raw_embedding_batch_real_mismatch)  = self.get_real_mismatch_batch(db_inds[2],num_data,phase)
             (real_mis1,real_mis2)=self.get_real_mismatch_batch(db_inds[2],num_data,phase)
 
+            #fake/match gp
+            (fake_gp1,fake_gp2) = self.get_match_batch(db_inds[3],phase)
+
 
             self.newGenBatch['fake/mat'].extend(list(zip(fake_match1,fake_match2)))
             #self.newGenBatch['fake/mat'].extend(list(zip(model_list_fake_match, label_batch_fake_match,learned_embedding_batch_fake_match,
@@ -118,10 +133,11 @@ class GANDataGenerator():
             self.newGenBatch['real/mis'].extend(list(zip(real_mis1,real_mis2)))
             #self.newGenBatch['real/mis'].extend(list(zip(model_list_real_mismatch, label_batch_real_mismatch,learned_embedding_batch_real_mismatch,
             # raw_embedding_batch_real_mismatch)))
+            self.newGenBatch['fake/mat_GP'].extend(list(zip(fake_gp1,fake_gp2)))
+
 
 
     def returnNewEpoch(self,phase):
-        phase='val'
         self.buildBatch(phase)
         return self.newGenBatch
 

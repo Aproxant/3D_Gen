@@ -35,3 +35,11 @@ def sample_z():
                                  size=[1, cfg.GAN_NOISE_SIZE]))
     else:
         raise ValueError('Sample distribution must be uniform or gaussian.')
+
+def evaluateShape(real_shape,fake_shape):
+    w,d,h,c=real_shape.shape
+    mask_real = (real_shape != 0)
+    mask_fake=  (fake_shape != 0)
+    compare_ten=torch.sum(mask_fake==mask_real)
+    return compare_ten/(w*d*h*c)
+    
