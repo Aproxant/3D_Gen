@@ -7,7 +7,7 @@ import numpy as np
 from config import cfg
 from Solvers.Evaluation import compute_metrics
 import os
-from tqdm.notebook import tqdm as tqdm_nb
+#from tqdm.notebook import tqdm as tqdm_nb
 from torch.utils.data import DataLoader
 from dataEmbedding.dataEmbeddingLoader import GenerateDataLoader,check_dataset,collate_embedding
 
@@ -47,13 +47,13 @@ class Solver():
             batch_size=cfg.EMBEDDING_BATCH_SIZE,              
             drop_last=check_dataset(train_dataset, cfg.EMBEDDING_BATCH_SIZE),
             collate_fn=collate_embedding,
-            num_workers=4
+            num_workers=0
             ),
             'val': DataLoader(
             val_dataset, 
             batch_size=cfg.EMBEDDING_BATCH_SIZE,
             collate_fn=collate_embedding,
-            num_workers=4
+            num_workers=0
             ),
             'test': DataLoader(
             test_dataset, 
@@ -70,8 +70,8 @@ class Solver():
             print("Epoch [{}/{}] starting...\n".format(epoch_id+1, epoch))
 
             print("Training...")
-            pbar = tqdm_nb()
-            pbar.reset(total=len(self.dataloader['train']))
+            #pbar = tqdm_nb()
+            #pbar.reset(total=len(self.dataloader['train']))
 
                 
             train_log = {
@@ -87,16 +87,15 @@ class Solver():
                     'text_norm_penalty': [],
                     'separator_loss': []
                     }
-
+            
             
             self.text_encoder.train()
             if self.mode=='online':
                 self.dynamicBatchConstruction()
             
             epochLoss=[]
-            for i,(_,main_cat,labels,texts) in enumerate(self.dataloader['train']):
-                pbar.update()
-                
+            for i,(_,main_cat,labels,texts) in tqdm(enumerate(self.dataloader['train']),total=len(self.dataloader['train'])):
+                #pbar.update()
                 losses = self.forward(texts, labels,main_cat)
 
                 train_log['total_loss'].append(losses['total_loss'].item())                   
@@ -119,9 +118,10 @@ class Solver():
 
                 desc = 'Training: [%d/%d][%d/%d], Total loss: %.4f' \
                     % (epoch_id+1, epoch, i+1, len(self.dataloader['train']), losses['total_loss'].item())
-                pbar.set_description(desc)
+                #pbar.set_description(desc)
                 
             print('Total epoch loss: %.4f' % np.mean(epochLoss))
+            #pbar.close()
             # validate
             if epoch_id % 5==0 and epoch_id!=0:
                 val_log = self.validate(val_log)
@@ -221,11 +221,11 @@ class Solver():
 
         self.text_encoder.eval()
 
-        pbar = tqdm_nb()
-        pbar.reset(total=len(self.dataloader['val']))
+        #pbar = tqdm_nb()
+        #pbar.reset(total=len(self.dataloader['val']))
 
-        for i,(_,main_cat,labels,texts) in enumerate(self.dataloader['val']):
-            pbar.update()
+        for i,(_,main_cat,labels,texts) in tqdm(enumerate(self.dataloader['val']),total=len(self.dataloader['val'])):
+            #pbar.update()
 
             with torch.no_grad():
                 losses = self.forward(texts, labels,main_cat)
@@ -239,8 +239,9 @@ class Solver():
 
             desc = 'Validating: [%d/%d], Total loss: %.4f' \
                     % (i+1, len(self.dataloader['val']), losses['total_loss'].item())
-            pbar.set_description(desc)
+            #pbar.set_description(desc)
 
+        #pbar.close()
 
         return val_log
     
@@ -256,11 +257,11 @@ class Solver():
 
     def build_embeedings_for_eval(self,idx_word,phase):
         data = {}
-        pbar = tqdm_nb()
-        pbar.reset(total=len(self.dataloader[phase]))
+        #pbar = tqdm_nb()
+        #pbar.reset(total=len(self.dataloader[phase]))
         self.text_encoder=self.text_encoder.to('cpu')
-        for j,(model_id,_,_,texts) in enumerate(self.dataloader[phase]):
-            pbar.update()
+        for j,(model_id,_,_,texts) in tqdm(enumerate(self.dataloader[phase])):
+            #pbar.update()
 
             texts = texts.to('cpu')
            
@@ -276,8 +277,9 @@ class Solver():
                     }
             desc = 'Evaluating: [%d/%d]' \
                     % (j+1, len(self.dataloader[phase]))
-            pbar.set_description(desc)
+            #pbar.set_description(desc)
         self.text_encoder=self.text_encoder.to(cfg.DEVICE)
+        #pbar.close()
         return data
 
 

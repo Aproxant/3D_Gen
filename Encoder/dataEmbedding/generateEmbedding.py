@@ -25,14 +25,13 @@ def build_embeedings_CWGAN(text_encoder_file,model,data_dict,vocab_dict,save_pat
 
     GanData=[]
     for (model_id,_,labels,texts) in tqdm(loader):
-
         texts = texts.to(cfg.DEVICE)
         text_embedding = model(texts)
         for i,elem in enumerate(model_id):    
             #GanData.append((elem,labels[i].detach(),text_embedding[i].detach(),texts[i].detach()))
             GanData.append((elem,text_embedding[i].detach().numpy()))
             
-        with open(os.path.join(save_path,'{}.p'.format(phase)), 'wb') as file:
-            pickle.dump(GanData, file)
+    with open(os.path.join(save_path,'{}.p'.format(phase)), 'wb') as file:
+        pickle.dump(GanData, file)
 
 
