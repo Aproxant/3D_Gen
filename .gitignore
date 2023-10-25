@@ -9,6 +9,7 @@
 .history/
 shapenet/
 GeneratedEmbeddings/
+SavedModels/
 primitives/
 # Built Visual Studio Code Extensions
 *.vsix

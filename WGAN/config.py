@@ -19,6 +19,7 @@ __C.GAN_TEST_SPLIT='./../GeneratedEmbeddings/test.p'
 __C.GAN_VAL_SPLIT='./../GeneratedEmbeddings/val.p'
 __C.GAN_VOXEL_FOLDER='./../nrrd_256_filter_div_32_solid'
 __C.GAN_MODELS_PATH='./../SavedModels'
+__C.GAN_INFO_DATA='./../InfoData'
 
 __C.SEED=4
 

@@ -9,6 +9,7 @@ from tqdm.notebook import tqdm as tqdm_nb
 from torch.utils.data import DataLoader
 from DataLoader.GANloader import GANLoader,check_dataset
 from tqdm import tqdm
+import pickle
 
 
 class SolverGAN():
@@ -23,6 +24,12 @@ class SolverGAN():
         self.g_optimizer = optimizer['gen']
 
         self.EpochLoss=np.full(5,np.inf)
+
+        self.saveLosses={'train_gen_loss':[],
+                         'train_disc_loss':[],
+                         'val_gen_loss':[],
+                         'val_disc_loss':[],
+                         'step':[]}
 
     def dynamicEpochConstruction(self):
         train=self.data_class.returnNewEpoch('train')
@@ -194,6 +201,15 @@ class SolverGAN():
                     print("Validating...\n")
                     self.validate()
                     self.val_report(genStep,genSteps)
+                
+                    self.saveLosses['train_gen_loss'].append(np.mean(self.train_log['generator_loss']))
+                    self.saveLosses['train_disc_loss'].append(np.mean(self.train_log['critic_loss']))
+                    self.saveLosses['step'].append(genStep+(epoch_id*genSteps))
+            #self.saveLosses['train_gen_loss'].append(np.mean(self.train_log['generator_loss']))
+            #self.saveLosses['train_disc_loss'].append(np.mean(self.train_log['critic_loss']))
+
+            with open(os.path.join(cfg.GAN_INFO_DATA,'GAN_data.pkl'), 'wb') as fp:
+                pickle.dump(self.saveLosses, fp)
 
             #pbar.close()
                 
@@ -276,7 +292,9 @@ class SolverGAN():
 
             self.val_log['critic_loss'].append(g_loss.item())
             self.val_log['generator_loss'].append(d_loss.item())
-            
+
+        self.saveLosses['val_gen_loss'].append(np.mean(self.val_log['generator_loss']))
+        self.saveLosses['val_disc_loss'].append(np.mean(self.val_log['critic_loss']))
         #pbar.close()
 
 
