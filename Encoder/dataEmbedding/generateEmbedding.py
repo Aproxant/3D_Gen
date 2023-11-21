@@ -21,7 +21,7 @@ def build_embeedings_CWGAN(text_encoder_file,model,data_dict,vocab_dict,save_pat
 
     random.shuffle(data)
     new_dataset=GenerateDataLoader(data,vocab_dict)
-    loader = DataLoader(new_dataset, batch_size=cfg.EMBEDDING_BATCH_SIZE,collate_fn=collate_embedding,shuffle=True,num_workers=4)
+    loader = DataLoader(new_dataset, batch_size=cfg.EMBEDDING_BATCH_SIZE,collate_fn=collate_embedding,shuffle=True)
 
     GanData=[]
     for (model_id,_,labels,texts) in tqdm(loader):
@@ -34,4 +34,12 @@ def build_embeedings_CWGAN(text_encoder_file,model,data_dict,vocab_dict,save_pat
     with open(os.path.join(save_path,'{}.p'.format(phase)), 'wb') as file:
         pickle.dump(GanData, file)
 
+
+def singleRun(data,model,vocab_dict):
+    new_dataset=GenerateDataLoader([data],vocab_dict)
+    loader = DataLoader(new_dataset, batch_size=1,collate_fn=collate_embedding)
+    for (_,_,_,texts) in tqdm(loader):
+        texts = texts.to(cfg.DEVICE)
+        text_embedding = model(texts)
+    return text_embedding
 

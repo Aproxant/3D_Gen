@@ -92,7 +92,8 @@ class Solver():
             self.text_encoder.train()
             if self.mode=='online':
                 self.dynamicBatchConstruction()
-            
+
+
             epochLoss=[]
             for i,(_,main_cat,labels,texts) in tqdm(enumerate(self.dataloader['train']),total=len(self.dataloader['train'])):
                 #pbar.update()
@@ -268,7 +269,7 @@ class Solver():
             text_embedding = self.text_encoder(texts)
             for i,elem in enumerate(model_id):    
 
-                caption=" ".join([idx_word[item.item()] for item in texts[i] if item.item()!=0])   
+                caption=" ".join([idx_word[str(item.item())] for item in texts[i] if item.item()!=0])   
                 if elem in data.keys():
                     data[elem]['text_embedding'].append((caption,text_embedding[i]))
                 else:

@@ -45,11 +45,11 @@ if __name__=='__main__':
         for i in TextModel.parameters():
             i.requires_grad_=False
     else:
-        TextModel=TextEncoder(len(stanData.dict_word2idx))
+        TextModel=TextEncoder(len(stanData.word_to_idx))
     TextModel=TextModel.to(device)
 
     optimizer = torch.optim.Adam(TextModel.parameters(), lr=cfg.EMBEDDING_LR, weight_decay=cfg.EMBEDDING_WEIGHT_DC)
     history=SolverEmbedding.Solver(TextModel,stanData,optimizer,criterion,cfg.EMBEDDING_BATCH_SIZE,'online',device)
 
 
-    history.train(cfg.EMBEDDING_EPOCH_NR,stanData.dict_idx2word)
+    history.train(cfg.EMBEDDING_EPOCH_NR,stanData.idx_to_word)

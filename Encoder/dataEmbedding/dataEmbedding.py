@@ -99,6 +99,8 @@ class Read_Load_BuildBatch():
                     word_count[word] = counter
                     counter+=1          
 
+                
+
         for item in self.bad_ids_captions:
             self.wordlens.append(len(item))     
 
@@ -234,20 +236,17 @@ class Read_Load_BuildBatch():
                 for word in caption_tuple[0]:
                     if str(word) in self.idx_to_word.keys():
                         indices.append(self.idx_to_word[str(word)])
-                    elif word==0:
-                        indices.append("<PAD>")
                     else:
-                        indices.append("<UNK>")
+                        indices.append("<PAD>")
+
                 caption.append(indices)
                 indices=[]
 
                 for word in matching_caption_tuple[0]:
                     if str(word) in self.idx_to_word.keys():
                         indices.append(self.idx_to_word[str(word)])
-                    elif word==0:
-                        indices.append("<PAD>")
                     else:
-                        indices.append("<UNK>")
+                        indices.append("<PAD>")
                 caption.append(indices)
 
             

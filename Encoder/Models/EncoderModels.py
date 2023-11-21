@@ -10,8 +10,8 @@ class TextEncoder(nn.Module):
     def __init__(self,dict_size):
         super(TextEncoder, self).__init__()
 
-        W1 = torch.FloatTensor(np.random.uniform(-1,1,size=(dict_size,128)))
-        self.embedded = torch.nn.Embedding(dict_size,128, _weight=W1,padding_idx=0)
+        W1 = torch.FloatTensor(np.random.uniform(-1,1,size=(dict_size+1,128)))
+        self.embedded = torch.nn.Embedding(dict_size+1,128, _weight=W1,padding_idx=0)
         #self.embedded.weight.requires_grad = False
 
         self.conv_128 = nn.Sequential(

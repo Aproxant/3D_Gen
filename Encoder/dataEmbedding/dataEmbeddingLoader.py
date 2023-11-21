@@ -28,6 +28,7 @@ class GenerateDataLoader(Dataset):
         label = self.embedding_data[idx][2]
         caption = self.embedding_data[idx][3]
             
+        
         indices = []
             
         if cfg.EMBEDDING_ALBERT:
@@ -36,12 +37,9 @@ class GenerateDataLoader(Dataset):
             for word in caption:
                 if word in self.dict_word2idx.keys():
                     indices.append(int(self.dict_word2idx[word]))
-                else:
-                    indices.append(int(self.dict_word2idx["<UNK>"]))
-        
-                if len(indices)>cfg.EMBEDDING_CAPTION_LEN:
-                    indices=indices[:cfg.EMBEDDING_CAPTION_LEN]
 
+            if len(indices)>cfg.EMBEDDING_CAPTION_LEN:
+                indices=indices[:cfg.EMBEDDING_CAPTION_LEN]
 
         return model_id,main_category, label, indices
     
@@ -66,7 +64,7 @@ def collate_embedding(data):
         for i, cap in enumerate(captions):
             end = int(len(captions[i]))
             merge_caps[i, :end] = torch.LongTensor(cap[:end])
-    
+
     return model_ids, torch.IntTensor(main_categories), torch.IntTensor(labels), merge_caps
 
 
