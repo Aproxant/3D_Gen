@@ -27,7 +27,7 @@ class Discriminator32_Small(nn.Module):
         embedding_dim = 256
 
         self.emb_out = nn.Sequential(
-            nn.Linear(128+cfg.GAN_NOISE_SIZE , embedding_dim),
+            nn.Linear(128, embedding_dim),
             nn.LeakyReLU(0.2),
             nn.Linear(embedding_dim, embedding_dim),
             nn.LeakyReLU(0.2),
@@ -50,6 +50,7 @@ class Discriminator32_Small(nn.Module):
 
         x = x.view(cfg.GAN_BATCH_SIZE,-1)
 
+        emb=emb[:,:128]
         emb=self.emb_out(emb)
         
         out=torch.cat((x,emb),1)
@@ -90,7 +91,7 @@ class Discriminator32(nn.Module):
         embedding_dim = 256
 
         self.emb_out = nn.Sequential(
-            nn.Linear(128+cfg.GAN_NOISE_SIZE , embedding_dim),
+            nn.Linear(128, embedding_dim),
             nn.LeakyReLU(0.2),
             nn.Linear(embedding_dim, embedding_dim),
             nn.LeakyReLU(0.2),
@@ -112,6 +113,8 @@ class Discriminator32(nn.Module):
         x=self.conv4(x)
         x=self.conv5(x)
         x = x.view(cfg.GAN_BATCH_SIZE,-1)
+
+        emb=emb[:,:128]
 
         emb=self.emb_out(emb)
         
