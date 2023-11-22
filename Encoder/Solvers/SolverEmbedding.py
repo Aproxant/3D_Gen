@@ -7,6 +7,7 @@ import numpy as np
 from config import cfg
 from Solvers.Evaluation import compute_metrics
 import os
+import pickle
 #from tqdm.notebook import tqdm as tqdm_nb
 from torch.utils.data import DataLoader
 from dataEmbedding.dataEmbeddingLoader import GenerateDataLoader,check_dataset,collate_embedding
@@ -23,6 +24,16 @@ class Solver():
         self.eval_acc = np.asarray([0.] * 5)
         self.eval_ckpts = [None] * 5
         self.mode=mode
+
+        self.SaveLoss={'total_loss': [],
+                       'n_pair_loss':[],
+                       'triple_loss':[],
+                       'norm_loss':[]}
+        
+        self.SaveValLoss={'total_loss': [],
+                       'n_pair_loss':[],
+                       'triple_loss':[],
+                       'norm_loss':[]}
 
     def dynamicBatchConstruction(self):
         if False:
@@ -122,11 +133,19 @@ class Solver():
                 #pbar.set_description(desc)
                 
             print('Total epoch loss: %.4f' % np.mean(epochLoss))
+            self.SaveLoss['total_loss'].append(np.mean(train_log['total_loss']))
+            self.SaveLoss['n_pair_loss'].append(np.mean(train_log['metric_loss']))
+            self.SaveLoss['triplet_loss'].append(np.mean(train_log['separator_loss']))
+            self.SaveLoss['norm_loss'].append(np.mean(train_log['text_norm_penalty']))
+
+            with open(os.path.join(cfg.EMBEDDING_INFO_DATA,'Embedding_train_data.pkl'),'wb') as fp:
+                pickle.dump(self.SaveLoss,fp)
             #pbar.close()
             # validate
             if epoch_id % 5==0 and epoch_id!=0:
                 val_log = self.validate(val_log)
-            
+                with open(os.path.join(cfg.EMBEDDING_INFO_DATA,'Embedding_val_data.pkl'),'wb') as fp:
+                    pickle.dump(self.SaveValLoss,fp)
 
                 self._epoch_report(train_log, val_log, epoch_id, epoch)
             
@@ -243,6 +262,11 @@ class Solver():
             #pbar.set_description(desc)
 
         #pbar.close()
+
+        self.SaveValLoss['total_loss'].append(np.mean(val_log['total_loss']))
+        self.SaveValLoss['n_pair_loss'].append(np.mean(val_log['metric_loss']))
+        self.SaveValLoss['triplet_loss'].append(np.mean(val_log['separator_loss']))
+        self.SaveValLoss['norm_loss'].append(np.mean(val_log['text_norm_penalty']))
 
         return val_log
     

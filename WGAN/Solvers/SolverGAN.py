@@ -195,18 +195,19 @@ class SolverGAN():
 
                 scheduler_g.step()
                 scheduler_d.step()
+                
+                print("Generator Loss: "+str(g_loss.item())+ "|  Critic Loss :"+ str(losses['d_loss'].item()))
 
-
-                if genStep % cfg.GAN_VAL_PERIOD==0 and genStep==0:
+                if genStep % cfg.GAN_VAL_PERIOD==0 and genStep!=0:
                     print("Validating...\n")
                     self.validate()
                     self.val_report(genStep,genSteps)
                 
-                    self.saveLosses['train_gen_loss'].append(np.mean(self.train_log['generator_loss']))
-                    self.saveLosses['train_disc_loss'].append(np.mean(self.train_log['critic_loss']))
-                    self.saveLosses['step'].append(genStep+(epoch_id*genSteps))
-            #self.saveLosses['train_gen_loss'].append(np.mean(self.train_log['generator_loss']))
-            #self.saveLosses['train_disc_loss'].append(np.mean(self.train_log['critic_loss']))
+            #        self.saveLosses['train_gen_loss'].append(np.mean(self.train_log['generator_loss']))
+            #        self.saveLosses['train_disc_loss'].append(np.mean(self.train_log['critic_loss']))
+            #        self.saveLosses['step'].append(genStep+(epoch_id*genSteps))
+            self.saveLosses['train_gen_loss'].append(np.mean(self.train_log['generator_loss']))
+            self.saveLosses['train_disc_loss'].append(np.mean(self.train_log['critic_loss']))
 
             with open(os.path.join(cfg.GAN_INFO_DATA,'GAN_data.pkl'), 'wb') as fp:
                 pickle.dump(self.saveLosses, fp)
@@ -261,7 +262,7 @@ class SolverGAN():
             gp_loss = torch.tensor(0, dtype=torch.float32)
    
 
-        d_loss=d_loss_fake_match+d_loss_real_match+d_loss_real_mismatch+gp_loss
+        d_loss=d_loss_fake_match+d_loss_real_match-d_loss_real_mismatch+gp_loss #tu minus zamieniony
 
         return {'d_loss':d_loss, 
                 'd_loss_fake/mat' : d_loss_fake_match,
