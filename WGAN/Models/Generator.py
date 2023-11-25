@@ -56,17 +56,20 @@ class Generator32(nn.Module):
 
         sigmoid_output = torch.sigmoid(logits)
 
-        condition1 = sigmoid_output[:, 3] < 0.5
-        condition2 = sigmoid_output[:, 3] >= 0.5
+        condition1 = sigmoid_output[:, 3] < cfg.GAN_VOXEL_CLIP
+        condition2 = sigmoid_output[:, 3] >= cfg.GAN_VOXEL_CLIP
+        
 
-        # If the value on the fourth channel is below 0.5, set it to 0
         sigmoid_output[condition1, 3] = 0.0
 
-        # If the value on the fourth channel is above 0.5, clip it to 1
         sigmoid_output[condition2, 3] = 1.0
 
-        # Set all other channels to 0 if the fourth channel was clipped to 1
-        sigmoid_output[condition1, :3] = 0.0
+        condition3 = sigmoid_output[:, 3] == 0  
+
+        sigmoid_output[condition3, 0] = 0.0
+        sigmoid_output[condition3, 1] = 0.0
+        sigmoid_output[condition3, 2] = 0.0
+
 
         return {'sigmoid_output': sigmoid_output, 'logits': logits}
 
