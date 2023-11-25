@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from config import cfg
-from transformers import AlbertModel
 import torch.nn.functional as F
 import math
 import numpy as np

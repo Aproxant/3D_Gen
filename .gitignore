@@ -12,6 +12,7 @@ shapenet/
 GeneratedEmbeddings/
 SavedModels/
 primitives/
+Models_copy/
 # Built Visual Studio Code Extensions
 *.vsix
 test.ipynb

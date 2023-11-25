@@ -2,13 +2,10 @@ import pandas as pd
 import os
 import random 
 from itertools import combinations
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
+
 import pickle
 from config import cfg
 import json
-import spacy
 import numpy as np
 from collections import Counter
 

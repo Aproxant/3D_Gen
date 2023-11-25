@@ -1,6 +1,3 @@
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
 
 from torch.utils.data import Dataset
 import torch
@@ -9,7 +6,6 @@ import os
 from itertools import groupby
 from config import cfg
 import numpy as np
-from transformers import AlbertTokenizer
 
 
 class GenerateDataLoader(Dataset):

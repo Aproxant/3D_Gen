@@ -58,19 +58,19 @@ class Solver():
             batch_size=cfg.EMBEDDING_BATCH_SIZE,              
             drop_last=check_dataset(train_dataset, cfg.EMBEDDING_BATCH_SIZE),
             collate_fn=collate_embedding,
-            num_workers=0
+            num_workers=4,pin_memory=True
             ),
             'val': DataLoader(
             val_dataset, 
             batch_size=cfg.EMBEDDING_BATCH_SIZE,
             collate_fn=collate_embedding,
-            num_workers=0
+            num_workers=4,pin_memory=True
             ),
             'test': DataLoader(
             test_dataset, 
             batch_size=cfg.EMBEDDING_BATCH_SIZE,
             collate_fn=collate_embedding,
-            #num_workers=2
+            num_workers=4,pin_memory=True
             )
             }    
         
@@ -135,7 +135,7 @@ class Solver():
             print('Total epoch loss: %.4f' % np.mean(epochLoss))
             self.SaveLoss['total_loss'].append(np.mean(train_log['total_loss']))
             self.SaveLoss['n_pair_loss'].append(np.mean(train_log['metric_loss']))
-            self.SaveLoss['triplet_loss'].append(np.mean(train_log['separator_loss']))
+            self.SaveLoss['triple_loss'].append(np.mean(train_log['separator_loss']))
             self.SaveLoss['norm_loss'].append(np.mean(train_log['text_norm_penalty']))
 
             with open(os.path.join(cfg.EMBEDDING_INFO_DATA,'Embedding_train_data.pkl'),'wb') as fp:
@@ -156,7 +156,7 @@ class Solver():
                 cur_eval_acc = metrics_t2t.precision[4]  # Precision @ 5
                 if all(self.eval_acc > cur_eval_acc):
                     #terminate training
-                    print('Best checkpoint:', self.val_ckpts[np.argmax(self.eval_acc)])
+                    print('Best checkpoint:', self.eval_ckpts[np.argmax(self.eval_acc)])
                     return 
                 else:  # Update val acc list
                     if max(self.eval_acc)<cur_eval_acc:
@@ -265,7 +265,7 @@ class Solver():
 
         self.SaveValLoss['total_loss'].append(np.mean(val_log['total_loss']))
         self.SaveValLoss['n_pair_loss'].append(np.mean(val_log['metric_loss']))
-        self.SaveValLoss['triplet_loss'].append(np.mean(val_log['separator_loss']))
+        self.SaveValLoss['triple_loss'].append(np.mean(val_log['separator_loss']))
         self.SaveValLoss['norm_loss'].append(np.mean(val_log['text_norm_penalty']))
 
         return val_log

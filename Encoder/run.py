@@ -13,13 +13,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial import cKDTree
 import pickle
+"""
 if torch.backends.mps.is_available():
     device = torch.device("mps")
 elif torch.cuda.is_available():
     device=torch.device("cuda")
 else:
     device=torch.device("cpu")
-
+"""
 device=cfg.DEVICE
 #print(device)
 torch.manual_seed(cfg.SEED)

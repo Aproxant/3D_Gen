@@ -51,42 +51,28 @@ class SolverGAN():
             batch_size=cfg.GAN_BATCH_SIZE,              
             drop_last=check_dataset(train_fake_mat, cfg.GAN_BATCH_SIZE),
             shuffle=True,
-            num_workers=0
-            ),
-            'train_real_mat': DataLoader(
-            train_real_mat, 
-            batch_size=cfg.GAN_BATCH_SIZE,              
-            drop_last=check_dataset(train_real_mat, cfg.GAN_BATCH_SIZE),
-            shuffle=True,
-            num_workers=0
-            ),
-            'train_real_mis': DataLoader(
-            train_real_mis, 
-            batch_size=cfg.GAN_BATCH_SIZE,              
-            drop_last=check_dataset(train_real_mis, cfg.GAN_BATCH_SIZE),
-            shuffle=True,
-            num_workers=0
+            num_workers=4,pin_memory=True
             ),
             'train_fake_GP': DataLoader(
             train_fake_GP, 
             batch_size=cfg.GAN_BATCH_SIZE,              
             drop_last=check_dataset(train_real_mis, cfg.GAN_BATCH_SIZE),
             shuffle=True,
-            num_workers=0
+            num_workers=4,pin_memory=True
             ),
             'test': DataLoader(
             test_loader, 
             batch_size=cfg.GAN_BATCH_SIZE,         
             shuffle=True,
             drop_last=check_dataset(test_loader, cfg.GAN_BATCH_SIZE),
-            num_workers=0
+            num_workers=4,pin_memory=True
             ),
             'val': DataLoader(
             val_loader, 
             shuffle=True,
             batch_size=cfg.GAN_BATCH_SIZE,              
             drop_last=check_dataset(val_loader, cfg.GAN_BATCH_SIZE),
-            num_workers=0
+            num_workers=4,pin_memory=True
             )
             }    
             
@@ -103,24 +89,26 @@ class SolverGAN():
         self.dynamicEpochConstruction()
         print("Loading Data...")
         fake_match = self.get_infinite_batches('train_fake_mat')
-        real_match=self.get_infinite_batches('train_real_mat')
-        real_mismatch=self.get_infinite_batches('train_real_mis')
+        #real_match=self.get_infinite_batches('train_real_mat')
+        #real_mismatch=self.get_infinite_batches('train_real_mis')
         fake_GAN=self.get_infinite_batches('train_fake_GP')
+        
         print("Training...")
         genSteps=len( self.dataloader['train_fake_mat'])
         for epoch_id in range(epochs):
             print("Epoch [{}/{}] starting...\n".format(epoch_id+1, epochs))
             #pbar = tqdm_nb()
             #pbar.reset(total=genSteps)
-            self.train_log = {
-                'generator_loss': [],
-                'critic_loss': [],
-                }
-            self.val_log ={
-                'generator_loss': [],
-                'critic_loss': [],
-                }
+
             for genStep in tqdm(range(genSteps)):
+                self.train_log = {
+                'generator_loss': [],
+                'critic_loss': [],
+                }
+                self.val_log ={
+                'generator_loss': [],
+                'critic_loss': [],
+                }
                 #pbar.update()
                 desc = 'Generator steps: [%d/%d], Critic steps[%d/%d], g_loss: %f, d_loss %f' \
                     % (genStep+1,genSteps,1,cfg.GAN_NUM_CRITIC_STEPS,0,0)
@@ -142,8 +130,8 @@ class SolverGAN():
                     d_out_fake_match = self.discriminator(fake_model['sigmoid_output'],fake_input_match[0])
 
                     #real_match
-                    real_input_match=real_match.__next__()
-                    d_out_real_match = self.discriminator(real_input_match[1],real_input_match[0])
+                    #real_input_match=real_match.__next__()
+                    d_out_real_match = self.discriminator(fake_input_match[1],fake_input_match[0])
 
                     ##real_mismatch
                     #real_input_mismatch=real_mismatch.__next__()
@@ -172,10 +160,11 @@ class SolverGAN():
                     desc = 'Generator steps: [%d/%d], Critic steps[%d/%d], g_loss: %f, d_loss %f' \
                     % (genStep+1,genSteps,d_iter+1,cfg.GAN_NUM_CRITIC_STEPS,0,losses['d_loss'].item())
                     #pbar.set_description(desc)
+                    self.train_log['critic_loss'].append(losses['d_loss'].item())
                 for p in self.discriminator.parameters():
                     p.requires_grad = False 
 
-                self.train_log['critic_loss'].append(sum(crit_loss)/cfg.GAN_NUM_CRITIC_STEPS)
+                #self.train_log['critic_loss'].append(sum(crit_loss)/cfg.GAN_NUM_CRITIC_STEPS)
 
                 fake_input_match=fake_GAN.__next__()
                 fake_model=self.generator(fake_input_match[0])
@@ -195,21 +184,24 @@ class SolverGAN():
                 scheduler_g.step()
                 scheduler_d.step()
                 
-                print("Generator Loss: "+str(g_loss.item())+ "|  Critic Loss :"+ str(losses['d_loss'].item()))
+                print("Generator Loss: "+str(g_loss.item())+ "|  Critic Loss :"+ str(np.mean(self.train_log['critic_loss'])))
 
                 if genStep % cfg.GAN_VAL_PERIOD==0 and genStep!=0:
                     print("Validating...\n")
                     self.validate()
                     self.val_report(genStep,genSteps)
-                
+                    with open(os.path.join(cfg.GAN_INFO_DATA,'GAN_data.pkl'), 'wb') as fp:
+                        pickle.dump(self.saveLosses, fp)
             #        self.saveLosses['train_gen_loss'].append(np.mean(self.train_log['generator_loss']))
             #        self.saveLosses['train_disc_loss'].append(np.mean(self.train_log['critic_loss']))
             #        self.saveLosses['step'].append(genStep+(epoch_id*genSteps))
-            self.saveLosses['train_gen_loss'].append(np.mean(self.train_log['generator_loss']))
-            self.saveLosses['train_disc_loss'].append(np.mean(self.train_log['critic_loss']))
-
-            with open(os.path.join(cfg.GAN_INFO_DATA,'GAN_data.pkl'), 'wb') as fp:
-                pickle.dump(self.saveLosses, fp)
+                self.saveLosses['train_gen_loss'].append(np.mean(self.train_log['generator_loss']))
+                self.saveLosses['train_disc_loss'].append(np.mean(self.train_log['critic_loss']))
+                self.saveLosses['step'].append(genStep)
+                
+            torch.save(self.discriminator.state_dict(), os.path.join(cfg.GAN_MODELS_PATH,"discriminator_model.pth"))
+            torch.save(self.generator.state_dict(),os.path.join(cfg.GAN_MODELS_PATH,"generator_model.pth"))
+            self.saveModel()
 
             #pbar.close()
                 
