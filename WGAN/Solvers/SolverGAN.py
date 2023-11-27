@@ -247,14 +247,14 @@ class SolverGAN():
         d_loss_real_match =mat_critic['logits'].mean()* float(cfg.GAN_MATCH_LOSS_COEFF)
         #d_loss_real_mismatch = mis_critic['logits'].mean() * float(cfg.GAN_FAKE_MISMATCH_LOSS_COEFF)
         
-        
+        test_loss=(mat_critic['logits']-fake_critic['logits']).mean()
 
         if not cfg.GAN_GP:
             gp_loss = torch.tensor(0, dtype=torch.float32)
    
 
         d_loss=(d_loss_real_match-d_loss_fake_match)+gp_loss #tu minus zamieniony
-
+        #d_loss=test_loss+gp_loss
         return {'d_loss':d_loss, 
                 'd_loss_fake/mat' : d_loss_fake_match,
                 'd_loss_real/mat': d_loss_real_match,

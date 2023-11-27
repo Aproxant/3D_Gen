@@ -56,21 +56,25 @@ class Generator32(nn.Module):
 
         sigmoid_output = torch.sigmoid(logits)
 
-        condition1 = sigmoid_output[:, 3] < cfg.GAN_VOXEL_CLIP
-        condition2 = sigmoid_output[:, 3] >= cfg.GAN_VOXEL_CLIP
+
+        temp_sigmoid_output=sigmoid_output.clone()
+
+        condition1 = temp_sigmoid_output[:, 3] < cfg.GAN_VOXEL_CLIP
+        condition2 = temp_sigmoid_output[:, 3] >= cfg.GAN_VOXEL_CLIP
         
 
-        sigmoid_output[condition1, 3] = 0.0
+        temp_sigmoid_output[condition1, 3] = 0.0
 
-        sigmoid_output[condition2, 3] = 1.0
+        temp_sigmoid_output[condition2, 3] = 1.0
 
-        condition3 = sigmoid_output[:, 3] == 0  
+        condition3 = temp_sigmoid_output[:, 3] == 0.0  
 
-        sigmoid_output[condition3, 0] = 0.0
-        sigmoid_output[condition3, 1] = 0.0
-        sigmoid_output[condition3, 2] = 0.0
+        temp_sigmoid_output[condition3, 0] = 0.0
+        temp_sigmoid_output[condition3, 1] = 0.0
+        temp_sigmoid_output[condition3, 2] = 0.0
 
-
+        sigmoid_output=temp_sigmoid_output
+        
         return {'sigmoid_output': sigmoid_output, 'logits': logits}
 
 class Generator32_Small(nn.Module):
@@ -88,12 +92,12 @@ class Generator32_Small(nn.Module):
 
         self.conv3 = nn.Sequential(
             nn.ConvTranspose3d(128, 128, kernel_size=4, stride=2, padding=1),  # Correct padding
-            nn.BatchNorm3d(256),
+            nn.BatchNorm3d(128),
         )
 
         self.conv4 = nn.Sequential(
             nn.ConvTranspose3d(128, 64, kernel_size=4, stride=2, padding=1),  # Correct padding
-            nn.BatchNorm3d(128),
+            nn.BatchNorm3d(64),
         )
 
         self.conv5 = nn.Sequential(
@@ -105,10 +109,6 @@ class Generator32_Small(nn.Module):
         x = F.relu(x, inplace=True)
         x = x.view(-1, 128, 4, 4, 4)
         
-        # Conv2
-        x = self.conv2(x)
-        x = F.relu(x, inplace=True)
-
         # Conv3
         x = self.conv3(x)
         x = F.relu(x, inplace=True)
@@ -121,6 +121,24 @@ class Generator32_Small(nn.Module):
         logits = self.conv5(x)
 
         sigmoid_output = torch.sigmoid(logits)
+
+        temp_sigmoid_output=sigmoid_output.clone()
+
+        condition1 = temp_sigmoid_output[:, 3] < cfg.GAN_VOXEL_CLIP
+        condition2 = temp_sigmoid_output[:, 3] >= cfg.GAN_VOXEL_CLIP
+        
+
+        temp_sigmoid_output[condition1, 3] = 0.0
+
+        temp_sigmoid_output[condition2, 3] = 1.0
+
+        condition3 = temp_sigmoid_output[:, 3] == 0.0  
+
+        temp_sigmoid_output[condition3, 0] = 0.0
+        temp_sigmoid_output[condition3, 1] = 0.0
+        temp_sigmoid_output[condition3, 2] = 0.0
+
+        sigmoid_output=temp_sigmoid_output
 
         return {'sigmoid_output': sigmoid_output, 'logits': logits}
 

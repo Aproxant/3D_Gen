@@ -30,8 +30,8 @@ class GANLoader(Dataset):
         voxel,_=nrrd.read(os.path.join(self.solid_file,model_id,model_id+'.nrrd'))
         voxel = torch.FloatTensor(voxel)
         voxel /=255.
-        if self.phase=='train':
-            voxel = augment_voxel_tensor(voxel,max_noise=cfg.GAN_TRAIN_AUGMENT_MAX)
+        #if self.phase=='train':
+        #    voxel = augment_voxel_tensor(voxel,max_noise=cfg.GAN_TRAIN_AUGMENT_MAX)
         learned_embedding=torch.Tensor(learned_embedding)
         learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z()),1).squeeze(0)
 

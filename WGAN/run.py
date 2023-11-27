@@ -35,8 +35,8 @@ np.random.seed(cfg.SEED)
 
 if __name__=='__main__':
     GAN_Data=GANDataGenerator()
-    generator=Generator32().to(cfg.DEVICE)
-    critic=Discriminator32().to(cfg.DEVICE)
+    generator=Generator32_Small().to(cfg.DEVICE)
+    critic=Discriminator32_Small().to(cfg.DEVICE)
     generator.load_state_dict(torch.load(os.path.join('./../SavedModels',"generator_model.pth")))
     critic.load_state_dict(torch.load(os.path.join('./../SavedModels',"discriminator_model.pth")))
     d_optimizer = optim.RMSprop(critic.parameters(), lr=cfg.GAN_LR, weight_decay=cfg.GAN_WEIGHT_DECAY)
