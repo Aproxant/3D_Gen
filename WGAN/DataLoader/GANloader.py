@@ -28,7 +28,7 @@ class GANLoader(Dataset):
 
     
         voxel,_=nrrd.read(os.path.join(self.solid_file,model_id,model_id+'.nrrd'))
-        voxel = torch.FloatTensor(voxel)
+        voxel = torch.FloatTensor(voxel[3]).unsqueeze(0)
         voxel /=255.
         #if self.phase=='train':
         #    voxel = augment_voxel_tensor(voxel,max_noise=cfg.GAN_TRAIN_AUGMENT_MAX)

@@ -12,7 +12,7 @@ class Discriminator32_Small(nn.Module):
         
 
         self.conv1=nn.Sequential(
-            nn.Conv3d(4,64, kernel_size=5, stride=1,padding='same'),
+            nn.Conv3d(1,64, kernel_size=5, stride=1,padding='same'),
             nn.LeakyReLU(0.2)
         )
         self.conv2=nn.Sequential(
@@ -68,7 +68,7 @@ class Discriminator32(nn.Module):
         
 
         self.conv1=nn.Sequential(
-            nn.Conv3d(4,64, kernel_size=4, stride=1,padding='same'),
+            nn.Conv3d(1,64, kernel_size=4, stride=1,padding='same'),
             nn.LeakyReLU(0.2)
         )
         self.conv2=nn.Sequential(

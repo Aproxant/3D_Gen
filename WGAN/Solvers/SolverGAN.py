@@ -10,6 +10,8 @@ from torch.utils.data import DataLoader
 from DataLoader.GANloader import GANLoader,check_dataset
 from tqdm import tqdm
 import pickle
+from torch.autograd import Variable
+from torch.autograd import grad as torch_grad
 
 
 class SolverGAN():
@@ -118,15 +120,16 @@ class SolverGAN():
                 self.discriminator.train()
 
             
-                for p in self.discriminator.parameters():
-                    p.requires_grad = True
+
 
                 crit_loss=[]
                 for d_iter in range(cfg.GAN_NUM_CRITIC_STEPS):
                     
                     #fake_match
                     fake_input_match=fake_match.__next__()
+                    
                     fake_model=self.generator(fake_input_match[0]) #build fake
+
                     d_out_fake_match = self.discriminator(fake_model['sigmoid_output'],fake_input_match[0])
 
                     #real_match
@@ -161,15 +164,14 @@ class SolverGAN():
                     % (genStep+1,genSteps,d_iter+1,cfg.GAN_NUM_CRITIC_STEPS,0,losses['d_loss'].item())
                     #pbar.set_description(desc)
                     self.train_log['critic_loss'].append(losses['d_loss'].item())
-                for p in self.discriminator.parameters():
-                    p.requires_grad = False 
+
 
                 #self.train_log['critic_loss'].append(sum(crit_loss)/cfg.GAN_NUM_CRITIC_STEPS)
 
                 fake_input_match=fake_GAN.__next__()
                 fake_model=self.generator(fake_input_match[0])
                 d_loss_fake_match = self.discriminator(fake_model['sigmoid_output'],fake_input_match[0])
-                g_loss = -torch.mean(d_loss_fake_match['logits'])  
+                g_loss = -1.0*torch.mean(d_loss_fake_match['logits'])  
 
                 self.generator.zero_grad()
    
@@ -209,22 +211,29 @@ class SolverGAN():
     def calculateGP(self,real_shape,fake_shape,text):
         epsilon=torch.rand((cfg.GAN_BATCH_SIZE,1,1,1,1)).repeat(1,real_shape.shape[1],real_shape.shape[2],real_shape.shape[3],real_shape.shape[4]).to(cfg.DEVICE)
         intepolatedShape=real_shape*epsilon+fake_shape*(1-epsilon)
-        mixed_score=self.discriminator(intepolatedShape,text)
+        intepolatedShape=Variable(intepolatedShape,requires_grad=True).to(cfg.DEVICE)
+        mixed_score=self.discriminator(intepolatedShape,text)['logits']
 
+        gradients=torch_grad(outputs=mixed_score,inputs=intepolatedShape,
+                             grad_outputs=torch.ones(mixed_score.size()).to(cfg.DEVICE),
+                             create_graph=True,retain_graph=True)[0]
+        
+        gradients = gradients.view(cfg.GAN_BATCH_SIZE, -1)
+
+        # Derivatives of the gradient close to 0 can cause problems because of
+        # the square root, so manually calculate norm and add epsilon
+        gradients_norm = torch.sqrt(torch.sum(gradients ** 2, dim=1) + 1e-12)
+
+        # Return gradient penalty
+        return cfg.GAN_LAMBDA_TERM*((gradients_norm - 1) ** 2).mean()
+    """
         gradient_s=torch.autograd.grad(
             inputs=intepolatedShape,
             outputs=mixed_score['logits'],
             grad_outputs=torch.ones_like(mixed_score['logits']),
             create_graph=True,retain_graph=True
         )[0]
-        """
-        gradient_t=torch.autograd.grad(
-            inputs=text,
-            outputs=mixed_score['logits'],
-            grad_outputs=torch.ones_like(mixed_score['logits']),
-            create_graph=True,retain_graph=True
-        )[0]
-        """
+
         gradient_dshape= gradient_s.view(gradient_s.shape[0],-1)
 
         gradient_s_norm=gradient_dshape.norm(2,dim=1)
@@ -239,7 +248,7 @@ class SolverGAN():
         gp_loss=gradint_s_penalty#+gradint_t_penalty
         
         return gp_loss
-
+    """
     def calculateLossDisc(self,fake_critic,mat_critic,mis_critic,gp_loss):
 
         d_loss_fake_match =fake_critic['logits'].mean() * float(cfg.GAN_FAKE_MATCH_LOSS_COEFF)
@@ -247,13 +256,13 @@ class SolverGAN():
         d_loss_real_match =mat_critic['logits'].mean()* float(cfg.GAN_MATCH_LOSS_COEFF)
         #d_loss_real_mismatch = mis_critic['logits'].mean() * float(cfg.GAN_FAKE_MISMATCH_LOSS_COEFF)
         
-        test_loss=(mat_critic['logits']-fake_critic['logits']).mean()
+        test_loss=torch.mean(fake_critic['logits'])-torch.mean(mat_critic['logits'])
 
         if not cfg.GAN_GP:
             gp_loss = torch.tensor(0, dtype=torch.float32)
    
 
-        d_loss=(d_loss_real_match-d_loss_fake_match)+gp_loss #tu minus zamieniony
+        d_loss=test_loss+gp_loss #tu minus zamieniony
         #d_loss=test_loss+gp_loss
         return {'d_loss':d_loss, 
                 'd_loss_fake/mat' : d_loss_fake_match,

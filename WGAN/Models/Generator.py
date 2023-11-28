@@ -101,7 +101,7 @@ class Generator32_Small(nn.Module):
         )
 
         self.conv5 = nn.Sequential(
-            nn.ConvTranspose3d(64, 4, kernel_size=4, stride=2, padding=1),  # Correct padding
+            nn.ConvTranspose3d(64, 1, kernel_size=4, stride=2, padding=1),  # Correct padding
         )
 
     def forward(self, x):
@@ -122,23 +122,23 @@ class Generator32_Small(nn.Module):
 
         sigmoid_output = torch.sigmoid(logits)
 
-        temp_sigmoid_output=sigmoid_output.clone()
+        #temp_sigmoid_output=sigmoid_output.clone()
 
-        condition1 = temp_sigmoid_output[:, 3] < cfg.GAN_VOXEL_CLIP
-        condition2 = temp_sigmoid_output[:, 3] >= cfg.GAN_VOXEL_CLIP
+        #condition1 = temp_sigmoid_output[:, 3] < cfg.GAN_VOXEL_CLIP
+        #condition2 = temp_sigmoid_output[:, 3] >= cfg.GAN_VOXEL_CLIP
         
 
-        temp_sigmoid_output[condition1, 3] = 0.0
+        #temp_sigmoid_output[condition1, 3] = 0.0
 
-        temp_sigmoid_output[condition2, 3] = 1.0
+        #temp_sigmoid_output[condition2, 3] = 1.0
 
-        condition3 = temp_sigmoid_output[:, 3] == 0.0  
+        #condition3 = temp_sigmoid_output[:, 3] == 0.0  
 
-        temp_sigmoid_output[condition3, 0] = 0.0
-        temp_sigmoid_output[condition3, 1] = 0.0
-        temp_sigmoid_output[condition3, 2] = 0.0
+        #temp_sigmoid_output[condition3, 0] = 0.0
+        #temp_sigmoid_output[condition3, 1] = 0.0
+        #temp_sigmoid_output[condition3, 2] = 0.0
 
-        sigmoid_output=temp_sigmoid_output
+        #sigmoid_output=temp_sigmoid_output
 
         return {'sigmoid_output': sigmoid_output, 'logits': logits}
 
