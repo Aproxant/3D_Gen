@@ -14,7 +14,7 @@ class Read_Load_BuildBatch():
     def __init__(self, batch_size):
         self.batch_size=batch_size
         self.label_enc={'03001627':0,'04379243':1}
-
+        self.punc = '''!()-[]{};:'"\,<>./?@#$%^&*_~'''
         self.stanfordDataReader()
         self.build_word_dict()
         self.tokenize_captions()
@@ -87,12 +87,12 @@ class Read_Load_BuildBatch():
 
     def build_word_dict(self):
         word_count = {}
-        counter=2
+        counter=1
         self.wordlens=[]
         for item in self.train:    
             self.wordlens.append(len(item[3]))   
             for word in item[3]:
-                if word  not in word_count.keys():
+                if word  not in word_count.keys() and word not in self.punc:
                     word_count[word] = counter
                     counter+=1          
 
@@ -106,7 +106,6 @@ class Read_Load_BuildBatch():
                     word_count[word] = counter
                     counter+=1  
 
-        word_count["<UNK>"]=1
         word_count["<PAD>"]=0
         self.dict_word2idx=word_count
         self.dict_idx2word={item: key for key,item in word_count.items()}

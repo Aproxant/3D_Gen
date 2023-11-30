@@ -33,10 +33,14 @@ class GANLoader(Dataset):
         #if self.phase=='train':
         #    voxel = augment_voxel_tensor(voxel,max_noise=cfg.GAN_TRAIN_AUGMENT_MAX)
         learned_embedding=torch.Tensor(learned_embedding)
-        learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z()),1).squeeze(0)
 
+        if self.phase=='train':
+            learned_embedding_list=[torch.cat((learned_embedding.unsqueeze(0),sample_z()),1).squeeze(0) for _ in range(cfg.GAN_NUM_CRITIC_STEPS)]
+            learned_embedding_list=torch.stack(learned_embedding_list,dim=0)
+        else:
+            learned_embedding_list=torch.cat((learned_embedding.unsqueeze(0),sample_z()),1).squeeze(0)
 
-        return model_id,learned_embedding,voxel
+        return model_id,learned_embedding_list,voxel
     """
     def __getitem__(self, idx):
         model_id = self.embeddings[idx][0]

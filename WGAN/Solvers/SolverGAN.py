@@ -39,9 +39,9 @@ class SolverGAN():
         val=self.data_class.returnNewEpoch('val')
 
         train_fake_mat = GANLoader(self.data_class.data_train,train['fake/mat'],'train')
-        train_real_mat = GANLoader(self.data_class.data_train,train['real/mat'],'train')
-        train_real_mis=GANLoader(self.data_class.data_train,train['real/mis'],'train')
-        train_fake_GP=GANLoader(self.data_class.data_train,train['fake/mat_GP'],'train')
+        #train_real_mat = GANLoader(self.data_class.data_train,train['real/mat'],'train')
+        #train_real_mis=GANLoader(self.data_class.data_train,train['real/mis'],'train')
+        #train_fake_GP=GANLoader(self.data_class.data_train,train['fake/mat_GP'],'train')
 
         test_loader = GANLoader(self.data_class.data_test,test,'test')
         val_loader=GANLoader(self.data_class.data_val,val,'val')
@@ -52,13 +52,6 @@ class SolverGAN():
             train_fake_mat, 
             batch_size=cfg.GAN_BATCH_SIZE,              
             drop_last=check_dataset(train_fake_mat, cfg.GAN_BATCH_SIZE),
-            shuffle=True,
-            num_workers=4,pin_memory=True
-            ),
-            'train_fake_GP': DataLoader(
-            train_fake_GP, 
-            batch_size=cfg.GAN_BATCH_SIZE,              
-            drop_last=check_dataset(train_real_mis, cfg.GAN_BATCH_SIZE),
             shuffle=True,
             num_workers=4,pin_memory=True
             ),
@@ -93,7 +86,7 @@ class SolverGAN():
         fake_match = self.get_infinite_batches('train_fake_mat')
         #real_match=self.get_infinite_batches('train_real_mat')
         #real_mismatch=self.get_infinite_batches('train_real_mis')
-        fake_GAN=self.get_infinite_batches('train_fake_GP')
+        #fake_GAN=self.get_infinite_batches('train_fake_GP')
         
         print("Training...")
         genSteps=len( self.dataloader['train_fake_mat'])
@@ -111,43 +104,38 @@ class SolverGAN():
                 'generator_loss': [],
                 'critic_loss': [],
                 }
-                #pbar.update()
-                desc = 'Generator steps: [%d/%d], Critic steps[%d/%d], g_loss: %f, d_loss %f' \
-                    % (genStep+1,genSteps,1,cfg.GAN_NUM_CRITIC_STEPS,0,0)
-                #pbar.set_description(desc)
-            
-                self.generator.train()
-                self.discriminator.train()
+
+                
 
             
 
 
                 crit_loss=[]
-                for d_iter in range(cfg.GAN_NUM_CRITIC_STEPS):
-                    
-                    #fake_match
-                    fake_input_match=fake_match.__next__()
-                    
-                    fake_model=self.generator(fake_input_match[0]) #build fake
+                fake_input_match=fake_match.__next__()
 
-                    d_out_fake_match = self.discriminator(fake_model['sigmoid_output'],fake_input_match[0])
+                for d_iter in range(cfg.GAN_NUM_CRITIC_STEPS):
+
+                    #fake_match
+                    #fake_input_match=fake_match.__next__()
+
+                    fake_model=self.generator(fake_input_match[0][:,d_iter]) #build fake
+
+                    d_out_fake_match = self.discriminator(fake_model['sigmoid_output'],fake_input_match[0][:,d_iter])
 
                     #real_match
                     #real_input_match=real_match.__next__()
-                    d_out_real_match = self.discriminator(fake_input_match[1],fake_input_match[0])
+                    d_out_real_match = self.discriminator(fake_input_match[1],fake_input_match[0][:,d_iter])
 
                     ##real_mismatch
                     #real_input_mismatch=real_mismatch.__next__()
                     #d_out_real_mismatch = self.discriminator(real_input_mismatch[1],real_input_mismatch[0])
-                
+
                     if cfg.GAN_GP:
-                        #fake_input_GP=fake_GP.__next__()
-                        #fake_input_GP[0].requires_grad=True
-                        #fake_model_GP=self.generator(fake_input_GP[0])
-                        gp_loss=self.calculateGP(fake_input_match[1],fake_model['sigmoid_output'],fake_input_match[0])
+                        
+                        gp_loss=self.calculateGP(fake_input_match[1],fake_model['sigmoid_output'],fake_input_match[0][:,d_iter])
                     else:
                         gp_loss=0
-
+                    
                     losses=self.calculateLossDisc(d_out_fake_match,d_out_real_match,None,gp_loss)
                     crit_loss.append(losses['d_loss'].item())
 
@@ -159,18 +147,16 @@ class SolverGAN():
                         clip_grad_value_(self.discriminator.parameters(), cfg.GAN_GRADIENT_CLIPPING)
 
                     self.d_optimizer.step()
-
-                    desc = 'Generator steps: [%d/%d], Critic steps[%d/%d], g_loss: %f, d_loss %f' \
-                    % (genStep+1,genSteps,d_iter+1,cfg.GAN_NUM_CRITIC_STEPS,0,losses['d_loss'].item())
-                    #pbar.set_description(desc)
+                  
                     self.train_log['critic_loss'].append(losses['d_loss'].item())
 
 
-                #self.train_log['critic_loss'].append(sum(crit_loss)/cfg.GAN_NUM_CRITIC_STEPS)
 
-                fake_input_match=fake_GAN.__next__()
-                fake_model=self.generator(fake_input_match[0])
-                d_loss_fake_match = self.discriminator(fake_model['sigmoid_output'],fake_input_match[0])
+                #fake_input_match=fake_GAN.__next__()
+                #fake_model=self.generator(fake_input_match[0])
+                fake_model=self.generator(fake_input_match[0][:,0]) #build fake
+
+                d_loss_fake_match = self.discriminator(fake_model['sigmoid_output'],fake_input_match[0][:,0])
                 g_loss = -1.0*torch.mean(d_loss_fake_match['logits'])  
 
                 self.generator.zero_grad()
@@ -179,16 +165,14 @@ class SolverGAN():
                 self.g_optimizer.step()
 
                 self.train_log['generator_loss'].append(g_loss.item())
-                desc = 'Generator steps: [%d/%d], Critic steps[%d/%d], g_loss: %f, d_loss %f' \
-                    % (genStep+1,genSteps,d_iter+1,cfg.GAN_NUM_CRITIC_STEPS,g_loss.item(),losses['d_loss'].item())
-                #pbar.set_description(desc)
-
-                scheduler_g.step()
-                scheduler_d.step()
                 
-                print("Generator Loss: "+str(g_loss.item())+ "|  Critic Loss :"+ str(np.mean(self.train_log['critic_loss'])))
+                
+                
+                #print("Generator Loss: "+str(g_loss.item())+ "|  Critic Loss :"+ str(np.mean(self.train_log['critic_loss'])))
 
                 if genStep % cfg.GAN_VAL_PERIOD==0 and genStep!=0:
+                    print("Generator Loss: "+str(g_loss.item())+ "|  Critic Loss :"+ str(np.mean(self.train_log['critic_loss'])))
+
                     print("Validating...\n")
                     self.validate()
                     self.val_report(genStep,genSteps)
@@ -201,6 +185,8 @@ class SolverGAN():
                 self.saveLosses['train_disc_loss'].append(np.mean(self.train_log['critic_loss']))
                 self.saveLosses['step'].append(genStep)
                 
+            scheduler_g.step()
+            scheduler_d.step()
             torch.save(self.discriminator.state_dict(), os.path.join(cfg.GAN_MODELS_PATH,"discriminator_model.pth"))
             torch.save(self.generator.state_dict(),os.path.join(cfg.GAN_MODELS_PATH,"generator_model.pth"))
             self.saveModel()
@@ -226,29 +212,7 @@ class SolverGAN():
 
         # Return gradient penalty
         return cfg.GAN_LAMBDA_TERM*((gradients_norm - 1) ** 2).mean()
-    """
-        gradient_s=torch.autograd.grad(
-            inputs=intepolatedShape,
-            outputs=mixed_score['logits'],
-            grad_outputs=torch.ones_like(mixed_score['logits']),
-            create_graph=True,retain_graph=True
-        )[0]
 
-        gradient_dshape= gradient_s.view(gradient_s.shape[0],-1)
-
-        gradient_s_norm=gradient_dshape.norm(2,dim=1)
-
-        #gradient_tshape= gradient_t.view(gradient_t.shape[0],-1)
-        
-        #gradient_t_norm=gradient_tshape.norm(2,dim=1)
-
-        #gradint_t_penalty=torch.mean((gradient_t_norm-1)**2)
-        gradint_s_penalty=torch.mean((gradient_s_norm-1)**2)
-
-        gp_loss=gradint_s_penalty#+gradint_t_penalty
-        
-        return gp_loss
-    """
     def calculateLossDisc(self,fake_critic,mat_critic,mis_critic,gp_loss):
 
         d_loss_fake_match =fake_critic['logits'].mean() * float(cfg.GAN_FAKE_MATCH_LOSS_COEFF)
@@ -297,7 +261,8 @@ class SolverGAN():
         self.saveLosses['val_gen_loss'].append(np.mean(self.val_log['generator_loss']))
         self.saveLosses['val_disc_loss'].append(np.mean(self.val_log['critic_loss']))
         #pbar.close()
-
+        self.generator.train()
+        self.discriminator.train()
 
     def saveModel(self):
         epoch_loss=0#sum(self.train_log['generator_loss'])/len(self.train_log['generator_loss'])

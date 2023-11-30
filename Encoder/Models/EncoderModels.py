@@ -9,8 +9,8 @@ class TextEncoder(nn.Module):
     def __init__(self,dict_size):
         super(TextEncoder, self).__init__()
 
-        W1 = torch.FloatTensor(np.random.uniform(-1,1,size=(dict_size+1,128)))
-        self.embedded = torch.nn.Embedding(dict_size+1,128, _weight=W1,padding_idx=0)
+        #W1 = torch.FloatTensor(np.random.uniform(-1,1,size=(dict_size+1,128)))
+        self.embedded = torch.nn.Embedding(dict_size+1,128, padding_idx=0)
         #self.embedded.weight.requires_grad = False
 
         self.conv_128 = nn.Sequential(
@@ -48,8 +48,8 @@ class TextEncoder(nn.Module):
         conved = self.bn_256(conved).transpose(2, 1).contiguous()
         _, (hidden_state, _)= self.lstm(conved, None)
         outputs = self.outputs(hidden_state[-1])
-        normalized_text_encoding = F.normalize(outputs, p=2, dim=1)
-        return normalized_text_encoding
+        #normalized_text_encoding = F.normalize(outputs, p=2, dim=1)
+        return outputs
     
 
 

@@ -82,6 +82,9 @@ class TripletLoss(nn.Module):
         
     def calc_euclidean(self, x1, x2):
         return (x1 - x2+cfg.EPS).pow(2).sum(1).sqrt()
+    def calc_cos(self, x1, x2):
+        normMul=torch.norm(x1,dim=1)*torch.norm(x2,dim=1)
+        return ((x1*x2).sum(1))/normMul
     
     def forward(self, inputs,t_labels):
 

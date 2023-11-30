@@ -142,14 +142,16 @@ class Solver():
                 pickle.dump(self.SaveLoss,fp)
             #pbar.close()
             # validate
+
+            
+            
+
             if epoch_id % 5==0 and epoch_id!=0:
                 val_log = self.validate(val_log)
                 with open(os.path.join(cfg.EMBEDDING_INFO_DATA,'Embedding_val_data.pkl'),'wb') as fp:
                     pickle.dump(self.SaveValLoss,fp)
 
                 self._epoch_report(train_log, val_log, epoch_id, epoch)
-            
-            
                 # evaluate
                 metrics_t2t = self.evaluate(self.text_encoder, idx_word)
                 # Check if we should terminate training
@@ -293,7 +295,7 @@ class Solver():
             text_embedding = self.text_encoder(texts)
             for i,elem in enumerate(model_id):    
 
-                caption=" ".join([idx_word[str(item.item())] for item in texts[i] if item.item()!=0])   
+                caption=" ".join([idx_word[item.item()] for item in texts[i] if item.item()!=0])   
                 if elem in data.keys():
                     data[elem]['text_embedding'].append((caption,text_embedding[i]))
                 else:
