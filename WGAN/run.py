@@ -7,6 +7,8 @@ import trimesh
 from functools import partial
 import ssl
 import os
+import sys
+sys.path.append('./../../3D_Gen/')
 import pickle
 from config import cfg
 import torch.optim as optim
@@ -37,8 +39,10 @@ if __name__=='__main__':
     GAN_Data=GANDataGenerator()
     generator=Generator32_Small().to(cfg.DEVICE)
     critic=Discriminator32_Small().to(cfg.DEVICE)
-    generator.load_state_dict(torch.load(os.path.join('./../SavedModels',"generator_model.pth")))
-    critic.load_state_dict(torch.load(os.path.join('./../SavedModels',"discriminator_model.pth")))
+    generator.load_state_dict(torch.load(os.path.join('./../SavedModels',"generator_model.pth"),map_location=torch.device('cpu')))
+    critic.load_state_dict(torch.load(os.path.join('./../SavedModels',"discriminator_model.pth"),map_location=torch.device('cpu')))
+    generator=generator.to(cfg.DEVICE)
+    critic=critic.to(cfg.DEVICE)
     #d_optimizer = optim.RMSprop(critic.parameters(), lr=cfg.GAN_LR, weight_decay=cfg.GAN_WEIGHT_DECAY)
     #g_optimizer = optim.RMSprop(generator.parameters(), lr=cfg.GAN_LR, weight_decay=cfg.GAN_WEIGHT_DECAY)
     betas = (.9, .99)

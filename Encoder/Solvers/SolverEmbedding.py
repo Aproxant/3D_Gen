@@ -1,4 +1,6 @@
 
+import sys
+sys.path.append('./../../3D_Gen/')
 from torch.optim.lr_scheduler import StepLR
 from torch.nn.utils import clip_grad_value_
 from tqdm import tqdm
@@ -7,6 +9,7 @@ import numpy as np
 from config import cfg
 from Solvers.Evaluation import compute_metrics
 import os
+
 import pickle
 #from tqdm.notebook import tqdm as tqdm_nb
 from torch.utils.data import DataLoader

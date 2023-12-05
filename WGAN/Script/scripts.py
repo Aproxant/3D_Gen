@@ -5,6 +5,12 @@ import os
 import torch
 from config import cfg
 
+import trimesh
+from trimesh import voxel
+from Encoder.dataEmbedding.dataEmbedding import Read_Load_BuildBatch
+from IPython.display import display
+
+
 def vizualizer_stanford_data(vox_color):
     vox_color=np.array(vox_color)
     vox_color = np.rollaxis(vox_color, 0,4)
@@ -37,9 +43,90 @@ def sample_z():
         raise ValueError('Sample distribution must be uniform or gaussian.')
 
 def evaluateShape(real_shape,fake_shape):
-    w,d,h,c=real_shape.shape
+    _,w,d,h=real_shape.shape
+    condition1 = fake_shape[0, :] < 0.5
+    condition2 = fake_shape[0, :] >= 0.5
+        
+
+    fake_shape[0,condition1] = 0.0
+
+    fake_shape[0,condition2] = 1.0
+
+
+    real_shape=real_shape.clone()[3].to(torch.int)
+    fake_shape=fake_shape.clone().squeeze(0).to(torch.int)
+
+
+
+    hamming_distance = torch.sum(torch.bitwise_xor(real_shape, fake_shape))
+    
+    hamming_distance = hamming_distance /(h*w*d)
+
+    intersection = torch.sum(torch.logical_and(real_shape, fake_shape))
+    union = torch.sum(torch.logical_or(real_shape, fake_shape))
+    jaccard_similarity = intersection / union
+
     mask_real = (real_shape != 0)
     mask_fake=  (fake_shape != 0)
     compare_ten=torch.sum(mask_fake==mask_real)
-    return compare_ten/(w*d*h*c)
+    return compare_ten/(w*d*h), hamming_distance,jaccard_similarity
     
+
+def loadOneElem(idx,data):
+
+
+    model_id=data[idx][0]
+    learned_embedding = data[idx][3]
+    stanData=Read_Load_BuildBatch(cfg.EMBEDDING_BATCH_SIZE)
+
+    values = [stanData.dict_idx2word[key] for key in data[idx][4].tolist() if key!=0]
+
+    print(' '.join(values))
+
+  
+    
+    voxel,_=nrrd.read(os.path.join(cfg.GAN_VOXEL_FOLDER,model_id,model_id+'.nrrd'))
+    voxel = torch.FloatTensor(voxel)
+    voxel /=255.
+
+    learned_embedding=torch.Tensor(learned_embedding)
+    learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z()),1).squeeze(0)
+
+
+    return model_id,learned_embedding,voxel
+
+def vizualizer_stanford_data(vox_color,data):
+
+    if data=='fake':
+        condition1 = vox_color[0, :] < 0.5
+        condition2 = vox_color[0, :] >= 0.5
+        
+
+        vox_color[0,condition1] = 0.0
+
+        vox_color[0,condition2] = 1.0
+
+        vox_color=vox_color.expand(4, -1, -1, -1)
+    
+
+    vox_color=np.array(vox_color)
+    vox_color = np.rollaxis(vox_color, 0,4)
+    ind=vox_color[:,:,:]!=[0,0,0,0]
+    vox = ind[:, :, :,0]
+    z=voxel.VoxelGrid(vox)
+
+    l=z.as_boxes()
+
+
+
+    l.apply_transform(trimesh.transformations.rotation_matrix(
+    np.radians(90.), [0, 0, 1], point=None
+    ))
+
+    l.apply_transform(trimesh.transformations.rotation_matrix(
+    np.radians(-90.0), [0, 1, 0], point=None
+    ))
+    scene = trimesh.Scene([l])
+
+    viewer = scene.show()
+    display(viewer)

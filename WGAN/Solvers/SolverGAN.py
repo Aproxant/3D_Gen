@@ -3,6 +3,7 @@ from torch.optim.lr_scheduler import StepLR
 from torch.nn.utils import clip_grad_value_
 import torch
 import numpy as np
+
 from config import cfg
 import os
 from tqdm.notebook import tqdm as tqdm_nb
@@ -189,7 +190,9 @@ class SolverGAN():
             scheduler_d.step()
             torch.save(self.discriminator.state_dict(), os.path.join(cfg.GAN_MODELS_PATH,"discriminator_model.pth"))
             torch.save(self.generator.state_dict(),os.path.join(cfg.GAN_MODELS_PATH,"generator_model.pth"))
-            self.saveModel()
+            with open(os.path.join(cfg.GAN_INFO_DATA,'GAN_data.pkl'), 'wb') as fp:
+                pickle.dump(self.saveLosses, fp)
+            #self.saveModel()
 
             #pbar.close()
                 

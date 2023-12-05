@@ -1,4 +1,6 @@
 
+import sys
+sys.path.append('./../../3D_Gen/')
 from torch.utils.data import Dataset
 import torch
 import nrrd
@@ -6,12 +8,17 @@ import os
 from itertools import groupby
 from config import cfg
 import numpy as np
-
+import spacy
 
 class GenerateDataLoader(Dataset):
-    def __init__(self, input_data,dict_word2idx):
+    def __init__(self, input_data,dict_word2idx,phase='Train'):
         self.embedding_data = input_data
         self.dict_word2idx=dict_word2idx
+        self.phase=phase
+
+        if phase=='test':
+            self.nlp = spacy.load('en_core_web_sm')
+            
 
         
 
@@ -26,6 +33,15 @@ class GenerateDataLoader(Dataset):
             
         
         indices = []
+
+        if self.phase=='test':
+            tmp=[]
+            doc = self.nlp(' '.join(caption))
+            for token in doc:
+                tmp.append(token.lemma_)
+            
+            caption=tmp
+
             
         if cfg.EMBEDDING_ALBERT:
             indices=' '.join(caption)

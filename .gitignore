@@ -9,14 +9,14 @@
 .history/
 shapenet/
 GeneratedEmbeddings/
-#SavedModels/
+GeneratedEmbeddingsTest/
+
+SavedModels/
 primitives/
 Models_copy/
-discriminator_model.pth
-generator_model.pth
+
 # Built Visual Studio Code Extensions
 *.vsix
-#test.ipynb
 
 nrrd_256_filter_div_32_solid/
  __pycache__/

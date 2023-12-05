@@ -2,6 +2,8 @@ import pandas as pd
 import os
 import random 
 from itertools import combinations
+import sys
+sys.path.append('./../../3D_Gen/')
 
 import pickle
 from config import cfg
