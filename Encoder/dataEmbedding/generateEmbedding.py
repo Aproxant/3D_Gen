@@ -21,7 +21,7 @@ def build_embeedings_CWGAN(text_encoder_file,model,data_dict,vocab_dict,save_pat
 
     random.shuffle(data)
     new_dataset=GenerateDataLoader(data,vocab_dict,phase)
-    loader = DataLoader(new_dataset, batch_size=cfg.EMBEDDING_BATCH_SIZE,collate_fn=collate_embedding,shuffle=True)
+    loader = DataLoader(new_dataset, batch_size=cfg.EMBEDDING_BATCH_SIZE,collate_fn=collate_embedding,shuffle=False)
 
     GanData=[]
     

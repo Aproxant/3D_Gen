@@ -10,7 +10,7 @@
 shapenet/
 GeneratedEmbeddings/
 GeneratedEmbeddingsTest/
-
+*GANexp.pkl
 SavedModels/
 primitives/
 Models_copy/

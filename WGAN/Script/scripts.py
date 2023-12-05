@@ -9,6 +9,8 @@ import trimesh
 from trimesh import voxel
 from Encoder.dataEmbedding.dataEmbedding import Read_Load_BuildBatch
 from IPython.display import display
+import point_cloud_utils as pcu
+from tqdm import tqdm
 
 
 def vizualizer_stanford_data(vox_color):
@@ -53,7 +55,7 @@ def evaluateShape(real_shape,fake_shape):
     fake_shape[0,condition2] = 1.0
 
 
-    real_shape=real_shape.clone()[3].to(torch.int)
+    real_shape=real_shape.clone()[3].to(torch.int).to(cfg.DEVICE)
     fake_shape=fake_shape.clone().squeeze(0).to(torch.int)
 
 
@@ -90,7 +92,8 @@ def loadOneElem(idx,data):
     voxel /=255.
 
     learned_embedding=torch.Tensor(learned_embedding)
-    learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z()),1).squeeze(0)
+    
+    learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z().to(cfg.DEVICE)),1).squeeze(0)
 
 
     return model_id,learned_embedding,voxel
@@ -130,3 +133,55 @@ def vizualizer_stanford_data(vox_color,data):
 
     viewer = scene.show()
     display(viewer)
+
+def evalTestSet(data,gen):
+    #stanData=Read_Load_BuildBatch(cfg.EMBEDDING_BATCH_SIZE)
+    
+    metrics={"hausdorff_distance_one_side": [],
+            "hausdorff_distance": [],
+            "chamfer_distance": [],   
+            "modelId": [],
+            "cap": []        
+            }
+    for elem in tqdm(data):
+        model_id=elem[0]
+        learned_embedding = elem[3]
+        cap=elem[4]
+        #values = [stanData.dict_idx2word[key] for key in elem[4].tolist() if key!=0]
+   
+        voxel,_=nrrd.read(os.path.join(cfg.GAN_VOXEL_FOLDER,model_id,model_id+'.nrrd'))
+        real_shape = torch.FloatTensor(voxel)
+        real_shape /=255.
+
+        learned_embedding=torch.Tensor(learned_embedding)
+    
+        learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z().to(cfg.DEVICE)),1).squeeze(0)
+
+        p=gen(learned_embedding.unsqueeze(0))
+        fake_shape=p['sigmoid_output'].squeeze(0).cpu().detach()
+    
+        condition1 = fake_shape[0, :] < 0.5
+        condition2 = fake_shape[0, :] >= 0.5
+        
+
+        fake_shape[0,condition1] = 0.0
+
+        fake_shape[0,condition2] = 1.0
+
+
+        fake = fake_shape.to(torch.int).squeeze(0).numpy()
+        real = real_shape.to(torch.int)[3].squeeze(0).numpy()
+
+
+        # Get coordinates of non-zero elements
+        coords1 = np.array(list(zip(*np.nonzero(real))),dtype=float)
+        coords2 = np.array(list(zip(*np.nonzero(fake))),dtype=float)
+
+        metrics['chamfer_distance'].append(pcu.chamfer_distance(coords1, coords2))
+        metrics['hausdorff_distance_one_side'].append(pcu.one_sided_hausdorff_distance(coords2, coords1))
+        metrics['hausdorff_distance'].append(pcu.hausdorff_distance(coords2, coords1))
+        metrics['modelId'].append(model_id)
+        metrics['cap'].append(cap)
+
+        #metrics["EMD"].append(pcu.earth_movers_distance(coords1,coords2))
+    return  metrics
