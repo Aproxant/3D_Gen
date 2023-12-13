@@ -7,7 +7,7 @@ __C = edict()
 cfg = __C
 
 
-__C.DEVICE='cuda'
+__C.DEVICE='cpu'
 __C.SEED=4
 
 

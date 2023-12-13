@@ -9,7 +9,7 @@ import trimesh
 from trimesh import voxel
 from Encoder.dataEmbedding.dataEmbedding import Read_Load_BuildBatch
 from IPython.display import display
-import point_cloud_utils as pcu
+#import point_cloud_utils as pcu
 from tqdm import tqdm
 
 
@@ -93,7 +93,7 @@ def loadOneElem(idx,data):
 
     learned_embedding=torch.Tensor(learned_embedding)
     
-    learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z().to(cfg.DEVICE)),1).squeeze(0)
+    learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z().to(cfg.DEVICE)),1)
 
 
     return model_id,learned_embedding,voxel
@@ -132,7 +132,11 @@ def vizualizer_stanford_data(vox_color,data):
     scene = trimesh.Scene([l])
 
     viewer = scene.show()
+
+
     display(viewer)
+
+
 
 def evalTestSet(data,gen):
     #stanData=Read_Load_BuildBatch(cfg.EMBEDDING_BATCH_SIZE)
@@ -155,9 +159,9 @@ def evalTestSet(data,gen):
 
         learned_embedding=torch.Tensor(learned_embedding)
     
-        learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z().to(cfg.DEVICE)),1).squeeze(0)
+        learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z().to(cfg.DEVICE)),1)
 
-        p=gen(learned_embedding.unsqueeze(0))
+        p=gen(learned_embedding)
         fake_shape=p['sigmoid_output'].squeeze(0).cpu().detach()
     
         condition1 = fake_shape[0, :] < 0.5
@@ -185,3 +189,107 @@ def evalTestSet(data,gen):
 
         #metrics["EMD"].append(pcu.earth_movers_distance(coords1,coords2))
     return  metrics
+
+def generateModelImages(indcs,data,gen,mode):
+
+    files = os.listdir("./Images/Real")
+    for file in files:
+        file_path = os.path.join("./Images/Real", file)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+    files = os.listdir("./Images/Fake")
+    for file in files:
+        file_path = os.path.join("./Images/Real", file)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+
+
+
+    os.chdir("Encoder")
+    stanData=Read_Load_BuildBatch(cfg.EMBEDDING_BATCH_SIZE)
+    os.chdir("..")
+
+    texts=[]
+    for idx,i in enumerate(indcs):
+
+        values = [stanData.dict_idx2word[key] for key in data[idx][4].tolist() if key!=0]
+
+        texts.append(str(idx)+" "+' '.join(values))
+        learned_embedding=torch.Tensor(data[i][3])
+        learned_embedding=torch.cat((learned_embedding.unsqueeze(0),sample_z().to(cfg.DEVICE)),1)
+        p=gen(learned_embedding)
+        fake=p['sigmoid_output'].squeeze(0).detach().cpu()
+        condition1 = fake[0, :] < 0.5
+        condition2 = fake[0, :] >= 0.5
+        
+        fake[0,condition1] = 0.0
+        fake[0,condition2] = 1.0
+
+        vox_color=fake.expand(4, -1, -1, -1)
+
+
+        mod,_=nrrd.read(os.path.join('./nrrd_256_filter_div_32_solid',data[i][0],data[i][0]+'.nrrd'))
+        vox_color_real= torch.FloatTensor(mod)
+        vox_color_real /=255.
+            
+
+        vox_color=np.array(vox_color)
+        vox_color = np.rollaxis(vox_color, 0,4)
+        ind=vox_color[:,:,:]!=[0,0,0,0]
+        vox = ind[:, :, :,0]
+        z=voxel.VoxelGrid(vox)
+
+        l=z.as_boxes()
+
+        l.apply_transform(trimesh.transformations.rotation_matrix(
+        np.radians(90.), [0, 0, 1], point=None
+        ))
+
+        l.apply_transform(trimesh.transformations.rotation_matrix(
+        np.radians(-90.0), [0, 1, 0], point=None
+        ))
+
+        scene = trimesh.Scene([l])
+
+
+
+        vox_color_real=np.array(vox_color_real)
+        vox_color_real = np.rollaxis(vox_color_real, 0,4)
+        ind_real=vox_color_real[:,:,:]!=[0,0,0,0]
+        vox_real = ind_real[:, :, :,0]
+        z_real=voxel.VoxelGrid(vox_real)
+
+        l_real=z_real.as_boxes()
+
+
+
+        l_real.apply_transform(trimesh.transformations.rotation_matrix(
+        np.radians(90.), [0, 0, 1], point=None
+        ))
+
+        l_real.apply_transform(trimesh.transformations.rotation_matrix(
+        np.radians(-90.0), [0, 1, 0], point=None
+        ))
+
+
+        scene_real= trimesh.Scene([l_real])
+
+
+
+        image_path = "./Images/Fake/fakeIM{}.png".format(idx)
+
+        image_path_real = "./Images/Real/realIM{}.png".format(idx)
+        photo = scene.save_image(resolution=(400,400))
+
+        photo_real = scene_real.save_image(resolution=(400,400))
+
+        with open(image_path, 'wb') as f:
+            f.write(photo)
+        with open(image_path_real, 'wb') as f:
+            f.write(photo_real)
+
+    with open('./Images/captions.txt', 'w+') as f:
+        for items in texts:
+            f.write('%s\n' %items)

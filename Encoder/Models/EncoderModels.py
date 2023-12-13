@@ -40,7 +40,6 @@ class TextEncoder(nn.Module):
     def forward(self, inputs):
 
         embedded = self.embedded(inputs) 
-
         conved = self.conv_128(embedded.transpose(2, 1).contiguous()) 
         conved = self.bn_128(conved)
         conved = self.conv_256(conved) 

@@ -11,10 +11,13 @@ shapenet/
 GeneratedEmbeddings/
 GeneratedEmbeddingsTest/
 *GANexp.pkl
-SavedModels/
+*stol.pkl
+*krzeslo.pkl
+*saveImages.py
 primitives/
 Models_copy/
-
+Images/
+InfoData/
 # Built Visual Studio Code Extensions
 *.vsix
 

@@ -35,10 +35,8 @@ if __name__=='__main__':
 
 
     criterion={
-        #'metric_main': Loss.InstanceMetricLoss(device=cfg.DEVICE),
         'metric_separator': Loss.TripletLoss(device=cfg.DEVICE),
         'metric_main':Loss.NPairLoss(device=cfg.DEVICE),
-        #'metric_separator':Loss.customSimilarityLoss()
         }
 
     if cfg.EMBEDDING_ALBERT:
