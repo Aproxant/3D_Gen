@@ -10,7 +10,6 @@
 shapenet/
 GeneratedEmbeddings/
 GeneratedEmbeddingsTest/
-*GANexp.pkl
 *stol.pkl
 *krzeslo.pkl
 *saveImages.py
