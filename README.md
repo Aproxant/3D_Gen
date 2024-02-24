@@ -16,8 +16,9 @@ The entire project is implemented in Python, making use of the PyTorch framework
 - [Introduction](#introduction) 
 - [Dataset](#dataset)
 - [Neural Networks Models](#dataset)
-- [Usage](#usage)
 - [Results](#results)
+- [Usage](#usage)
+
 
   
 
@@ -43,10 +44,30 @@ Training data used in this project can be downloaded from the website: http://te
 This project employs a dual neural network architecture, combining the capabilities of a Text Encoder and a Conditional Wasserstein Generative Adversarial Network (cWGAN).
 The collaborative use of a Text Encoder and a cWGAN forms the foundation of our approach. The Text Encoder efficiently transforms textual descriptions into numerical vectors, serving as the conditional input for the subsequent cWGAN. This tandem architecture enables the generation of 3D models that faithfully represent the details specified in the input text.
 
-# Text Encoder
+### Text Encoder
 
-![](ImagesR/textEncoder.png?raw=true)
+![](imagesR/textEncoder.png)
 
+### Generator
+
+![](imagesR/Generator.png)
+
+### CWGAN
+
+![](imagesR/Critic.png)
+
+
+## Results
+
+In the table below, the obtained results for a given text description are presented, accompanied by a side-by-side comparison with the original model.
+
+### Chairs
+
+![](imagesR/chairs.png)
+
+### Table
+
+![](imagesR/tables.png)
 
 
 ## Usage
